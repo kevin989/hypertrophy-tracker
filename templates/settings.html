@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-md card">
+  <h2 class="text-xl font-semibold mb-3">Settings</h2>
+  <form method="post" class="space-y-3">
+    <div>
+      <label class="block text-sm text-gray-600 mb-1">Units</label>
+      <select class="input" name="units">
+        <option value="kg" {{ 'selected' if state['units']=='kg' else '' }}>Kilograms (kg)</option>
+        <option value="lb" {{ 'selected' if state['units']=='lb' else '' }}>Pounds (lb)</option>
+      </select>
+    </div>
+    <button class="btn" type="submit">Save</button>
+  </form>
+</div>
+{% endblock %}
