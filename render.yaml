@@ -8,5 +8,3 @@ services:
     envVars:
       - key: FLASK_SECRET
         generateValue: true
-      - key: PASSWORD
-      - key: DATABASE_URL
