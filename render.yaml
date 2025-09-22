@@ -9,6 +9,4 @@ services:
       - key: FLASK_SECRET
         generateValue: true
       - key: PASSWORD
-        sync: false
-      - key: postgresql://postgres:jamesmcf989@db.nevsexynyzpwpmvhvsem.supabase.co:5432/postgres
-        sync: false
+      - key: DATABASE_URL
