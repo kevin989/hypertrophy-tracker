@@ -1,4 +1,4 @@
-import os, io, base64
+cimport os, io, base64
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session
 import pandas as pd
@@ -226,45 +226,62 @@ def history_day(y, m, d):
 
         return render_template("history_day.html", sess=sess, rows=rows, units=st.units)
 
-@app.route("/rm-test", methods=["GET","POST"])
+@app.route("/rm-test", methods=["GET", "POST"])
 @require_login
 def rm_test():
     ensure_db()
     with Session(engine) as s:
-        st = get_or_create_state(s)
+        st = get_or_create_state(s)  # must exist; creates row id=1 if missing
+
+        # helper: display in user units
+        def disp(x):
+            if x is None:
+                return ""
+            return round(x * 2.20462262185, 2) if st.units == "lb" else round(x, 2)
+
         if request.method == "POST":
-            def to_kg(val, units):
-                if not val: return None
-                v = float(val)
-                return v if units=="kg" else v/2.20462262185
-            squat = to_kg(request.form.get("squat"), st.units)
-            bench = to_kg(request.form.get("bench"), st.units)
-            deadlift = to_kg(request.form.get("deadlift"), st.units)
-            ohp = to_kg(request.form.get("ohp"), st.units)
-            rms = st.rms or {"squat": None, "bench": None, "deadlift": None, "ohp": None}
-            if squat: rms["squat"] = squat
-            if bench: rms["bench"] = bench
-            if deadlift: rms["deadlift"] = deadlift
-            if ohp: rms["ohp"] = ohp
-            st.rms = rms
+            # read inputs in user units
+            def parse_float(name):
+                v = request.form.get(name)
+                if v in (None, ""): 
+                    return None
+                try:
+                    return float(v)
+                except:
+                    return None
+
+            bench_in = parse_float("bench_rm")
+            squat_in = parse_float("squat_rm")
+            dead_in  = parse_float("deadlift_rm")
+            ohp_in   = parse_float("ohp_rm")
+
+            # store as kg
+            def to_kg(v):
+                if v is None: return None
+                return v if st.units == "kg" else v / 2.20462262185
+
+            if bench_in is not None: st.bench = to_kg(bench_in)
+            if squat_in is not None: st.squat = to_kg(squat_in)
+            if dead_in  is not None: st.deadlift = to_kg(dead_in)
+            if ohp_in   is not None: st.ohp = to_kg(ohp_in)
+
             s.commit()
-            flash("RM test saved.", "success")
-            return redirect(url_for("rm_test"))
-            # st = get_or_create_state(s)  # you likely already have this
-            def disp(x):
-                if x is None:
-                    return ""
-                return round(x * 2.20462262185, 2) if st.units == "lb" else round(x, 2)
+            flash("1RM values saved.", "success")
+            # After saving RMs, (re)seed week 1 & 2 suggested if blank:
+            # init_week_rows will seed if empty due to our earlier changes.
+            init_week_rows(1, s)
+            init_week_rows(2, s)
+            return redirect(url_for("week_view", week=1))
 
-            ctx = {
-                "units": st.units,
-                "bench_disp": disp(st.bench),
-                "squat_disp": disp(st.squat),
-                "deadlift_disp": disp(st.deadlift),
-                "ohp_disp": disp(st.ohp),
-            }
-            return render_template("rm_test.html", **ctx)
-
+        # GET: show form with current values
+        ctx = {
+            "units": st.units,
+            "bench_disp": disp(st.bench),
+            "squat_disp": disp(st.squat),
+            "deadlift_disp": disp(st.deadlift),
+            "ohp_disp": disp(st.ohp),
+        }
+        return render_template("rm_test.html", **ctx)
 
 @app.route("/week/<int:week>", methods=["GET", "POST"])
 @require_login
