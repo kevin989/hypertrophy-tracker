@@ -30,6 +30,8 @@ def ensure_db():
     Base.metadata.create_all(engine)
     _db_ready = True
 
+app = Flask(__name__)
+
 @app.route("/healthz")
 def healthz():
     try:
@@ -38,7 +40,6 @@ def healthz():
     except Exception as e:
         return f"db error: {e}", 500
 
-app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev-secret")
 
 def require_login(f):
