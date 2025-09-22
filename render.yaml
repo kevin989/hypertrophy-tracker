@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: hypertrophy-tracker
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: FLASK_SECRET
+        generateValue: true
+      - key: PASSWORD
+        sync: false
+      - key: postgresql://postgres:jamesmcf989@db.nevsexynyzpwpmvhvsem.supabase.co:5432/postgres
+        sync: false
