@@ -1,34 +1,159 @@
 {% extends "base.html" %}
 {% block content %}
-<form method="post">
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-    <div class="card">
-      <label class="block text-sm text-gray-600">Body Weight ({{ units }})</label>
-      <input class="input w-40" type="number" step="0.1" name="bodyweight" value="{{ bw if bw else '' }}">
-      <button class="btn mt-3" type="submit">Save Week {{ week }}</button>
-    </div>
-    <div class="card">
-      <h3 class="text-lg font-semibold mb-2">Notes</h3>
-      <p class="text-sm text-gray-600">Enter set reps below. For accessories, last set is AMRAP; weights increment if AMRAP meets threshold.</p>
-    </div>
-  </div>
 
-  {% for day_title, sub in grouped %}
-    <div class="card mb-6">
-      <h3 class="text-lg font-semibold mb-2">{{ day_title }}</h3>
-      {% if sub|length == 0 %}
-      {% if 'Rest' in day_title %}<span class="badge ml-2">Recovery</span>{% endif %}
-        <p class="text-gray-500">Rest day.</p>
-      {% else %}
-      <div class="overflow-x-auto">
-      
+<style>
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:center;justify-content:center;z-index:50}
+  .modal[aria-hidden="false"]{display:flex}
+  .modal-inner{background:#fff;border-radius:1rem;padding:1rem;max-width:1000px;width:96%;max-height:85vh;overflow:auto}
+</style>
+
+<!-- Week navigation -->
+<div class="flex items-center justify-between mb-3">
+  <a class="btn-secondary" href="{{ url_for('week_view', week=week-1 if week>1 else 1) }}">← Prev</a>
+  <div class="badge">Program V1.0</div>
+  <a class="btn-secondary" href="{{ url_for('week_view', week=week+1 if week<12 else 12) }}">Next →</a>
+</div>
+
+<!-- Bodyweight -->
+<div class="card mb-4">
+  <form method="post" class="flex items-end gap-3">
+    <div>
+      <label class="block text-sm text-gray-600 mb-1">Bodyweight ({{units}})</label>
+      <input class="input w-32" type="number" step="0.1" name="bodyweight" value="{{ bw or '' }}">
+    </div>
+    <button class="btn" type="submit">Save Bodyweight</button>
+  </form>
+</div>
+
+<!-- Days list -->
+{% for title, sub in grouped %}
+  {% set day = loop.index %}
+  <div class="card mb-3">
+    <div class="flex items-center justify-between">
+      <h3 class="text-lg font-semibold">
+        {{ title }}
+        <span id="timer-{{day}}" class="badge ml-2">Not started</span>
+      </h3>
+      <div class="space-x-2">
+        <button class="btn-secondary open-modal" type="button" data-day="{{day}}">Open</button>
       </div>
-      {% endif %}
     </div>
-  {% endfor %}
-  <div class="mb-10">
-    <button class="btn" type="submit">Save Week {{ week }}</button>
   </div>
-</form>
-{% endblock %}
 
+  <!-- Modal for this day -->
+  <div id="modal-{{day}}" class="modal" aria-hidden="true">
+    <div class="modal-inner">
+      <div class="flex items-center justify-between mb-2">
+        <h4 class="text-lg font-semibold">{{ title }}</h4>
+        <button class="btn-ghost close-modal" type="button" data-day="{{day}}">Close</button>
+      </div>
+
+      <form id="form-day-{{day}}" method="post">
+        <!-- hidden timer fields -->
+        <input type="hidden" id="start-{{day}}" name="start_{{day}}">
+        <input type="hidden" id="end-{{day}}"   name="end_{{day}}">
+        <input type="hidden" name="save_day" value="{{day}}">
+
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Exercise</th>
+              <th>Sets</th>
+              <th>Rep Target</th>
+              <th>Suggested ({{units}})</th>
+              <th>Load (this week, {{units}})</th>
+              <th>S1</th>
+              <th>S2</th>
+              <th>S3</th>
+              <th>New Load ({{units}})</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for r in sub %}
+            <tr>
+              <td>{{ r.exercise }}</td>
+              <td>{{ r.sets }}</td>
+              <td>{% if r.category=='accessory' %}{{r.rep_low}}–{{r.rep_high}}+{% else %}{{r.rep_low}}–{{r.rep_high}}{% endif %}</td>
+              <td>{{ r.load_last if r.load_last is not none else '' }}</td>
+              <td>
+                <input class="input w-24 track-input" type="number" step="0.5"
+                       name="row_{{ r.id }}_load"
+                       placeholder="{{ r.load_last if r.load_last is not none else '' }}"
+                       data-day="{{day}}">
+              </td>
+              <td><input class="input w-16 track-input" type="number" name="row_{{ r.id }}_s1" min="0" step="1" data-day="{{day}}"></td>
+              <td><input class="input w-16 track-input" type="number" name="row_{{ r.id }}_s2" min="0" step="1" data-day="{{day}}"></td>
+              <td><input class="input w-16 track-input" type="number" name="row_{{ r.id }}_s3" min="0" step="1" data-day="{{day}}" placeholder="{% if r.category=='accessory' %}AMRAP{% endif %}"></td>
+              <td>{{ r.new_load if r.new_load is not none else '' }}</td>
+              <td><input class="input" type="text" name="row_{{ r.id }}_notes"></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+
+        <div class="flex items-center justify-end mt-3">
+          <button type="button" class="btn save-day" data-day="{{day}}">Save Day</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endfor %}
+
+<script>
+(function(){
+  // Modal open/close without inline JS
+  document.querySelectorAll('.open-modal').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const d = btn.dataset.day;
+      const modal = document.getElementById('modal-'+d);
+      if(modal) modal.setAttribute('aria-hidden','false');
+    });
+  });
+  document.querySelectorAll('.close-modal').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const d = btn.dataset.day;
+      const modal = document.getElementById('modal-'+d);
+      if(modal) modal.setAttribute('aria-hidden','true');
+    });
+  });
+  // click outside to close
+  document.querySelectorAll('.modal').forEach(m=>{
+    m.addEventListener('click', (e)=>{
+      if(e.target === m){ m.setAttribute('aria-hidden','true'); }
+    });
+  });
+
+  // Timer: start on first input for that day; stop on Save Day
+  const dayTimers = {}; // {day: Date}
+  function markStart(day){
+    if(!dayTimers[day]){
+      dayTimers[day] = new Date();
+      const badge = document.getElementById('timer-'+day);
+      if(badge) badge.textContent = "⏱ Started";
+      const hiddenStart = document.getElementById('start-'+day);
+      if(hiddenStart) hiddenStart.value = new Date().toISOString();
+    }
+  }
+  document.querySelectorAll('.track-input').forEach(inp=>{
+    inp.addEventListener('input', ()=>{
+      const d = inp.dataset.day;
+      if(d) markStart(d);
+    });
+  });
+  document.querySelectorAll('.save-day').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const d = btn.dataset.day;
+      const startEl = document.getElementById('start-'+d);
+      if(startEl && startEl.value){
+        const endEl = document.getElementById('end-'+d);
+        if(endEl) endEl.value = new Date().toISOString();
+      }
+      const form = document.getElementById('form-day-'+d);
+      if(form) form.submit();
+    });
+  });
+})();
+</script>
+
+{% endblock %}

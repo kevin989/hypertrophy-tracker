@@ -129,6 +129,11 @@ def history():
         y = int(request.args.get("y", today.year))
         m = int(request.args.get("m", today.month))
         days_in_month = monthrange(y, m)[1]
+
+        # Python computes weekday of the 1st: Monday=0..Sunday=6; we want Sunday-first grids
+        first_weekday_mon0 = date(y, m, 1).weekday()  # 0..6 (Mon..Sun)
+        start_pad = (first_weekday_mon0 + 1) % 7  # 0..6 (Sun..Sat), # of blanks before day 1
+
         sessions = s.scalars(
             select(WorkoutSession).where(
                 WorkoutSession.session_date >= date(y, m, 1),
@@ -138,7 +143,10 @@ def history():
         by_day = {}
         for sess in sessions:
             by_day.setdefault(sess.session_date.day, []).append(sess)
-        return render_template("history.html", year=y, month=m, days=days_in_month, by_day=by_day)
+
+        return render_template("history.html",
+                               year=y, month=m, days=days_in_month,
+                               start_pad=start_pad, by_day=by_day)
 
 @app.route("/history/<int:y>/<int:m>/<int:d>")
 @require_login
@@ -154,8 +162,7 @@ def history_day(y, m, d):
 
         rows = s.scalars(select(Log).where(Log.week == sess.week, Log.day == sess.day)).all()
         st = get_or_create_state(s)
-        def show_w(x):
-            return None if x is None else (round(x * 2.20462262185, 2) if st.units == "lb" else x)
+        def show_w(x): return None if x is None else (round(x*2.20462262185,2) if st.units=="lb" else x)
         for r in rows:
             r.load_last = show_w(r.load_last)
             r.new_load = show_w(r.new_load)

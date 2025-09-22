@@ -13,11 +13,7 @@
     <div class="badge">Sun</div><div class="badge">Mon</div><div class="badge">Tue</div><div class="badge">Wed</div>
     <div class="badge">Thu</div><div class="badge">Fri</div><div class="badge">Sat</div>
 
-    {% set first = (year ~ "-" ~ ("%02d"|format(month)) ~ "-01") | todatetime %}
-    {% set start_wday = first.isoweekday() %} {# 1..7 Mon..Sun #}
-
-    {# pad so Sunday is col 1 #}
-    {% for _ in range((start_wday % 7)) %}<div></div>{% endfor %}
+    {% for _ in range(start_pad) %}<div></div>{% endfor %}
 
     {% for d in range(1, days+1) %}
       {% set sess_list = by_day.get(d) %}
