@@ -5,15 +5,38 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sqlalchemy import create_engine, select, and_
+from sqlalchemy import create_engine, select, and_, text
 from sqlalchemy.orm import Session
 
 from models import Base, State, Log, Progress
 from logic import DAYS, COMPOUND_RM_MAP, round_to_2p5, compute_new_load
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///local.db")
-engine = create_engine(DATABASE_URL, future=True)
-Base.metadata.create_all(engine)
+engine = create_engine(
+    DATABASE_URL,
+    future=True,
+    pool_pre_ping=True,
+    pool_recycle=1800
+)
+
+_db_ready = False
+def ensure_db():
+    """Connect once and create tables lazily."""
+    global _db_ready
+    if _db_ready:
+        return
+    with engine.connect() as conn:
+        conn.execute(text("select 1"))
+    Base.metadata.create_all(engine)
+    _db_ready = True
+
+@app.route("/healthz")
+def healthz():
+    try:
+        ensure_db()
+        return "ok", 200
+    except Exception as e:
+        return f"db error: {e}", 500
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev-secret")
@@ -77,11 +100,15 @@ def logout():
     return redirect(url_for("dashboard"))
 
 @app.route("/")
+def rm_test():
+    ensure_db()
 def index():
     return redirect(url_for("dashboard"))
 
 @app.route("/settings", methods=["GET","POST"])
 @require_login
+def rm_test():
+    ensure_db()
 def settings():
     with Session(engine) as s:
         st = get_or_create_state(s)
@@ -95,6 +122,8 @@ def settings():
 
 @app.route("/rm-test", methods=["GET","POST"])
 @require_login
+def rm_test():
+    ensure_db()
 def rm_test():
     with Session(engine) as s:
         st = get_or_create_state(s)
@@ -120,6 +149,8 @@ def rm_test():
 
 @app.route("/week/<int:week>", methods=["GET","POST"])
 @require_login
+def rm_test():
+    ensure_db()
 def week_view(week: int):
     if week < 1 or week > 12:
         flash("Week must be 1–12.", "error")
@@ -178,6 +209,8 @@ def week_view(week: int):
 
 @app.route("/dashboard")
 @require_login
+def rm_test():
+    ensure_db()
 def dashboard():
     with Session(engine) as s:
         st = get_or_create_state(s)
@@ -212,6 +245,8 @@ def dashboard():
 
 @app.route("/export.xlsx")
 @require_login
+def rm_test():
+    ensure_db()
 def export_xlsx():
     with Session(engine) as s:
         logs = s.scalars(select(Log)).all()
