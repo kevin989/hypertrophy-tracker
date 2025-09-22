@@ -25,14 +25,14 @@ PROGRAM_V1 = [
         ("Romanian Deadlift", 3, 8, 10, "compound", 5.0),
         ("Bulgarian Split Squat", 3, 10, 12, "compound", 2.5),
         ("Standing Calf Raise", 3, 12, 15, "accessory", 2.5),
-        ("Hip Thrust", 2, 8, 10, "compound", 5.0),
+        ("Hip Thrust", 2, 8, 10, "accessory", 5.0),
     ]),
     ("Day 5 – Push (Chest/Shoulders/Triceps)", [
         ("DB Flat Press", 3, 8, 10, "compound", 2.5),
         ("Incline DB Press/Cable Fly", 3, 10, 12, "compound", 2.5),
         ("Seated DB Overhead Press", 3, 8, 10, "compound", 2.5),
         ("Cable Lateral Raise", 3, 12, 15, "accessory", 1.25),
-        ("Close-Grip Bench Press", 3, 6, 8, "compound", 2.5),
+        ("Close-Grip Bench Press", 3, 6, 8, "accessory", 2.5),
     ]),
     ("Day 6 – Pull (Back/Biceps/Rear Delts/Traps)", [
         ("Deadlift", 3, 4, 6, "compound", 5.0),
