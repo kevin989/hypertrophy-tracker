@@ -144,63 +144,98 @@ def rm_test():
             return redirect(url_for("rm_test"))
         return render_template("rm_test.html", state={"units": st.units})
 
-@app.route("/week/<int:week>", methods=["GET","POST"])
+@app.route("/week/<int:week>", methods=["GET", "POST"])
 @require_login
 def week_view(week: int):
     ensure_db()
+
     if week < 1 or week > 12:
         flash("Week must be 1–12.", "error")
         return redirect(url_for("dashboard"))
+
     with Session(engine) as s:
         st = get_or_create_state(s)
         init_week_rows(week, s)
 
         if request.method == "POST":
+            # Save bodyweight (stored as kg)
             bw = request.form.get("bodyweight")
-            if bw:
+            if bw not in (None, ""):
                 try:
                     bw_val = float(bw)
-                    bw_kg = bw_val if st.units=="kg" else bw_val/2.20462262185
-                    existing = s.scalars(select(Progress).where(Progress.week==week)).first()
+                    bw_kg = bw_val if st.units == "kg" else bw_val / 2.20462262185
+                    existing = s.scalars(select(Progress).where(Progress.week == week)).first()
                     if existing:
                         existing.bodyweight = bw_kg
                     else:
                         s.add(Progress(week=week, bodyweight=bw_kg))
-                    s.commit()
                 except Exception:
                     pass
 
-            rows = s.scalars(select(Log).where(Log.week==week)).all()
+            # Save sets and compute next loads
+            rows = s.scalars(select(Log).where(Log.week == week)).all()
             for r in rows:
-                for k in ["s1","s2","s3","amrap"]:
+                # Load (this week) — store in kg as base for progression
+                load_field = request.form.get(f"row_{r.id}_load")
+                if load_field not in (None, ""):
+                    try:
+                        load_val = float(load_field)
+                        load_kg = load_val if st.units == "kg" else load_val / 2.20462262185
+                        r.load_last = load_kg
+                    except Exception:
+                        pass
+
+                # Reps (S1–S3)
+                for k in ["s1", "s2", "s3"]:
                     val = request.form.get(f"row_{r.id}_{k}")
-                    if val not in (None,""):
-                        try: setattr(r, k, int(val))
-                        except: setattr(r, k, None)
-                data = {"load_last": r.load_last, "rep_high": r.rep_high, "increment": r.increment,
-                        "category": r.category, "sets": r.sets, "s1": r.s1, "s2": r.s2, "s3": r.s3, "amrap": r.amrap}
+                    if val not in (None, ""):
+                        try:
+                            setattr(r, k, int(val))
+                        except Exception:
+                            setattr(r, k, None)
+
+                # Treat S3 as AMRAP for accessories; ignore AMRAP for compounds
+                amrap_reps = r.s3 if r.category == "accessory" else None
+
+                data = {
+                    "load_last": r.load_last,
+                    "rep_high": r.rep_high,
+                    "increment": r.increment,
+                    "category": r.category,
+                    "sets": r.sets,
+                    "s1": r.s1,
+                    "s2": r.s2,
+                    "s3": r.s3,
+                    "amrap": amrap_reps,
+                }
                 r.new_load = compute_new_load(data)
+
             s.commit()
             flash(f"Week {week} saved.", "success")
             return redirect(url_for("week_view", week=week))
 
-        rows = s.scalars(select(Log).where(Log.week==week).order_by(Log.day, Log.id)).all()
+        # ----- GET render -----
+        rows = s.scalars(select(Log).where(Log.week == week).order_by(Log.day, Log.id)).all()
+
+        def display_w(x):
+            if x is None:
+                return None
+            return round(x * 2.20462262185, 2) if st.units == "lb" else x
+
         grouped = []
-        for day_idx in range(1,8):
-            sub = [r for r in rows if r.day==day_idx]
+        for day_idx in range(1, 7 + 1):
+            sub = [r for r in rows if r.day == day_idx]
             title = sub[0].day_title if sub else f"Day {day_idx}"
-            def conv(x): 
-                if x is None: return None
-                return round(x*2.20462262185,2) if st.units=="lb" else x
             for r in sub:
-                r.load_last = conv(r.load_last)
-                r.new_load = conv(r.new_load)
+                r.load_last = display_w(r.load_last)
+                r.new_load = display_w(r.new_load)
             grouped.append((title, sub))
 
         bw_val = None
-        prog = s.scalars(select(Progress).where(Progress.week==week)).first()
+        prog = s.scalars(select(Progress).where(Progress.week == week)).first()
         if prog:
-            bw_val = prog.bodyweight if st.units=="kg" else round(prog.bodyweight*2.20462262185,1)
+            bw_val = prog.bodyweight if st.units == "kg" else round(prog.bodyweight * 2.20462262185, 1)
+
         return render_template("week.html", week=week, grouped=grouped, bw=bw_val, units=st.units)
 
 @app.route("/dashboard")
@@ -222,7 +257,7 @@ def dashboard():
         bw_png = bio.read()
 
         # Lift charts
-        lifts = ["Back Squat","Flat Barbell Bench Press","Deadlift","Overhead Press (Seated/Standing)"]
+        lifts = ["Back Squat","Flat Barbell Bench Press","Deadlift","Overhead Press (Barbell/DB)"]
         lift_pngs = {}
         for lift in lifts:
             series = s.execute(select(Log.week, Log.new_load, Log.load_last).where(Log.exercise==lift).order_by(Log.week)).all()
