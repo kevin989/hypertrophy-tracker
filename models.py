@@ -1,5 +1,5 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer, Float, Text, JSON, UniqueConstraint
+from sqlalchemy import String, Integer, Float, Text, JSON, UniqueConstraint, Date, TIMESTAMP, BigInteger
 
 class Base(DeclarativeBase):
     pass

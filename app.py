@@ -5,8 +5,8 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sqlalchemy import create_engine, select, and_, text, Date, TIMESTAMP, Integer, BigInteger
-from sqlalchemy.orm import Session, Mapped, mapped_column
+from sqlalchemy import create_engine, select, and_, text
+from sqlalchemy.orm import Session
 from datetime import datetime, date, timezone
 from calendar import monthrange
 
