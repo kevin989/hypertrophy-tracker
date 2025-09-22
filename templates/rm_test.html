@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <div class="card">
+    <h2 class="text-xl font-semibold mb-2">Enter 1RM estimates ({{ state['units'] }})</h2>
+    <form method="post">
+      <div class="grid grid-cols-2 gap-2 items-center mb-2">
+        <label>Squat</label>
+        <input class="input" type="number" step="0.5" name="squat" placeholder="e.g., 180">
+      </div>
+      <div class="grid grid-cols-2 gap-2 items-center mb-2">
+        <label>Bench</label>
+        <input class="input" type="number" step="0.5" name="bench" placeholder="e.g., 120">
+      </div>
+      <div class="grid grid-cols-2 gap-2 items-center mb-2">
+        <label>Deadlift</label>
+        <input class="input" type="number" step="0.5" name="deadlift" placeholder="e.g., 220">
+      </div>
+      <div class="grid grid-cols-2 gap-2 items-center mb-4">
+        <label>OHP</label>
+        <input class="input" type="number" step="0.5" name="ohp" placeholder="e.g., 80">
+      </div>
+      <button class="btn" type="submit">Save</button>
+    </form>
+    <p class="text-sm text-gray-600 mt-3">Week 1 & 2 compound loads auto-set to ~62.5% and ~67.5% of these 1RMs.</p>
+  </div>
+  <div class="card">
+    <h2 class="text-xl font-semibold mb-2">Tip</h2>
+    <p>If you only know a 5–8RM top set, estimate 1RM with Epley: <em>1RM ≈ weight × (1 + 0.0333 × reps)</em>.</p>
+  </div>
+</div>
+{% endblock %}

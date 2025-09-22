@@ -1,1 +1,48 @@
-<html><body>{% block content %}{% endblock %}</body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title if title else 'Hypertrophy Tracker' }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .card { @apply bg-white shadow rounded p-4; }
+    .btn { @apply px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700; }
+    .btn-secondary { @apply px-3 py-1 rounded bg-gray-200 text-gray-800 hover:bg-gray-300; }
+    .input { @apply border rounded px-2 py-1 w-full; }
+    .table { @apply w-full border-collapse; }
+    .table th { @apply text-left border-b py-2; }
+    .table td { @apply border-b py-1; }
+  </style>
+</head>
+<body class="bg-gray-50">
+  <div class="max-w-6xl mx-auto p-4">
+    <header class="flex items-center justify-between mb-4">
+      <h1 class="text-2xl font-bold">Hypertrophy Tracker</h1>
+      <nav class="space-x-2 text-sm">
+        <a class="btn-secondary" href="{{ url_for('dashboard') }}">Dashboard</a>
+        <a class="btn-secondary" href="{{ url_for('rm_test') }}">RM Test</a>
+        <a class="btn-secondary" href="{{ url_for('settings') }}">Settings</a>
+        <a class="btn-secondary" href="{{ url_for('export_xlsx') }}">Export Excel</a>
+        {% if session.get('authed') %}
+          <a class="btn-secondary" href="{{ url_for('logout') }}">Logout</a>
+        {% endif %}
+        <span class="ml-2">Weeks:</span>
+        {% for w in range(1,13) %}
+          <a class="btn-secondary" href="{{ url_for('week_view', week=w) }}">W{{ w }}</a>
+        {% endfor %}
+      </nav>
+    </header>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-3 space-y-2">
+          {% for category, message in messages %}
+            <div class="p-2 rounded {{ 'bg-green-100 text-green-900' if category=='success' else 'bg-red-100 text-red-900' }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>

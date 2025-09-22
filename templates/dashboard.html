@@ -1,1 +1,20 @@
-{% extends 'base.html' %}{% block content %}dash{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  <div class="card">
+    <h2 class="text-xl font-semibold mb-2">Body Weight ({{ units }})</h2>
+    <img src="data:image/png;base64,{{ bw_png|b64encode }}" class="w-full rounded border">
+  </div>
+  <div class="card">
+    <h2 class="text-xl font-semibold mb-2">Strength Trends ({{ units }})</h2>
+    <div class="grid grid-cols-1 gap-3">
+      {% for name, png in lift_pngs.items() %}
+        <div>
+          <div class="text-sm font-semibold mb-1">{{ name }}</div>
+          <img src="data:image/png;base64,{{ png|b64encode }}" class="w-full rounded border">
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
