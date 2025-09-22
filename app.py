@@ -44,6 +44,38 @@ def healthz():
 
 app.secret_key = os.environ.get("FLASK_SECRET", "dev-secret")
 
+# --- helpers for week-1/2 suggested loads from RM Test ---
+def _percent_for_week(week: int) -> float:
+    # tweak if you prefer (e.g., 0.70/0.75). These are good conservative starts.
+    return 0.55 if week == 1 else 0.675
+
+def _round_kg_to_2p5(x: float) -> float:
+    # storage is kg; round to nearest 2.5 kg for plates
+    return round(x / 2.5) * 2.5
+
+def seed_from_rms_for_row(row, st, week: int, rm_map: dict):
+    """
+    If this exercise maps to an RM and week is 1 or 2,
+    seed row.load_last from st.<rm> * pct (rounded) IF it's empty.
+    """
+    if row.load_last not in (None, 0) and row.load_last is not None:
+        return  # already seeded / logged
+
+    if week not in (1, 2):
+        return
+
+    rm_key = rm_map.get(row.exercise)
+    if not rm_key:
+        return  # no RM mapping for this exercise (e.g., accessories)
+
+    one_rm = getattr(st, rm_key, None)
+    if not one_rm:
+        return  # user hasn't set this RM yet
+
+    pct = _percent_for_week(week)
+    load_kg = _round_kg_to_2p5(one_rm * pct)
+    row.load_last = load_kg
+
 def require_login(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
@@ -61,24 +93,49 @@ def get_or_create_state(s: Session) -> State:
     return st
 
 def init_week_rows(week: int, s: Session):
-    exists = s.scalars(select(Log).where(Log.week==week)).first()
-    if exists: return
+    """
+    Ensure all rows for this week exist and metadata matches the active program.
+    Does NOT overwrite user loads/reps; only seeds Week 1/2 suggested loads from RM Test.
+    """
+    from logic import DAYS, COMPOUND_RM_MAP  # DAYS = PROGRAM_V1 list
+
     st = get_or_create_state(s)
-    for day_idx, (title, exs) in enumerate(DAYS, start=1):
-        for ex_name, sets, low, high, cat, inc in exs:
-            load_last = None
-            if week in (1,2) and cat=="compound":
-                pct = 0.625 if week==1 else 0.675
-                key = COMPOUND_RM_MAP.get(ex_name)
-                base = (st.rms or {}).get(key)
-                if base: load_last = round_to_2p5(float(base)*pct)
-            elif week > 2:
-                prev = s.scalars(select(Log).where(and_(Log.week==week-1, Log.exercise==ex_name))).first()
-                if prev:
-                    load_last = prev.new_load if prev.new_load is not None else prev.load_last
-            s.add(Log(week=week, day=day_idx, day_title=title, exercise=ex_name,
-                      sets=sets, rep_low=low, rep_high=high, category=cat, increment=inc,
-                      load_last=load_last))
+
+    for day_idx, (day_title, exercises) in enumerate(DAYS, start=1):
+        for ex_name, sets, rep_low, rep_high, category, increment in exercises:
+            row = s.scalars(
+                select(Log).where(
+                    Log.week == week,
+                    Log.day == day_idx,
+                    Log.exercise == ex_name,
+                )
+            ).first()
+
+            if row is None:
+                row = Log(
+                    week=week, day=day_idx, day_title=day_title,
+                    exercise=ex_name, sets=sets, rep_low=rep_low, rep_high=rep_high,
+                    category=category, increment=increment,
+                    load_last=None, new_load=None
+                )
+                # seed suggested for week 1/2 if RM exists
+                seed_from_rms_for_row(row, st, week, COMPOUND_RM_MAP)
+                s.add(row)
+            else:
+                # keep metadata in sync with program
+                row.day_title = day_title
+                row.sets = sets
+                row.rep_low = rep_low
+                row.rep_high = rep_high
+                row.category = category
+                row.increment = increment
+                # clear stale AMRAP if now a compound
+                if row.category != "accessory":
+                    row.amrap = None
+                # if Week 1/2 and still blank, try to seed suggested load
+                if row.load_last in (None, 0):
+                    seed_from_rms_for_row(row, st, week, COMPOUND_RM_MAP)
+
     s.commit()
 
 @app.template_filter("b64encode")
@@ -193,7 +250,21 @@ def rm_test():
             s.commit()
             flash("RM test saved.", "success")
             return redirect(url_for("rm_test"))
-        return render_template("rm_test.html", state={"units": st.units})
+            # st = get_or_create_state(s)  # you likely already have this
+            def disp(x):
+                if x is None:
+                    return ""
+                return round(x * 2.20462262185, 2) if st.units == "lb" else round(x, 2)
+
+            ctx = {
+                "units": st.units,
+                "bench_disp": disp(st.bench),
+                "squat_disp": disp(st.squat),
+                "deadlift_disp": disp(st.deadlift),
+                "ohp_disp": disp(st.ohp),
+            }
+            return render_template("rm_test.html", **ctx)
+
 
 @app.route("/week/<int:week>", methods=["GET", "POST"])
 @require_login
