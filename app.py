@@ -41,6 +41,23 @@ def healthz():
         return "ok", 200
     except Exception as e:
         return f"db error: {e}", 500
+    
+@app.route("/rm-test-health")
+@require_login
+def rm_test_health():
+    ensure_db()
+    with Session(engine) as s:
+        st = s.get(Settings, 1)
+        if st is None:
+            return {"ok": False, "reason": "Settings row missing"}, 200
+        return {
+            "ok": True,
+            "units": st.units,
+            "bench_kg": st.bench,
+            "squat_kg": st.squat,
+            "deadlift_kg": st.deadlift,
+            "ohp_kg": st.ohp,
+        }, 200
 
 app.secret_key = os.environ.get("FLASK_SECRET", "dev-secret")
 
@@ -229,57 +246,83 @@ def history_day(y, m, d):
 @app.route("/rm-test", methods=["GET", "POST"])
 @require_login
 def rm_test():
+    """
+    Robust RM Test page:
+    - Creates a Settings row if missing.
+    - Stores bench/squat/deadlift/ohp in kg.
+    - On GET, shows current values in user's units (kg/lb).
+    - On POST, saves values and re-seeds week 1 & 2 suggested loads.
+    """
     ensure_db()
     with Session(engine) as s:
-        st = get_or_create_state(s)  # must exist; creates row id=1 if missing
+        # ---- get or create Settings row safely (no external helpers) ----
+        st = s.get(Settings, 1)
+        if st is None:
+            st = Settings(
+                id=1,
+                units="kg",          # default to kg
+                bench=None,
+                squat=None,
+                deadlift=None,
+                ohp=None,
+            )
+            s.add(st)
+            s.commit()
 
-        # helper: display in user units
-        def disp(x):
+        # convenience converters based on current units
+        def to_display(x):
             if x is None:
                 return ""
             return round(x * 2.20462262185, 2) if st.units == "lb" else round(x, 2)
 
+        def to_kg(x):
+            if x is None:
+                return None
+            return x if st.units == "kg" else x / 2.20462262185
+
         if request.method == "POST":
-            # read inputs in user units
-            def parse_float(name):
+            # parse numeric inputs in user units (kg or lb)
+            def p(name):
                 v = request.form.get(name)
-                if v in (None, ""): 
+                if v in (None, ""):
                     return None
                 try:
                     return float(v)
-                except:
+                except Exception:
                     return None
 
-            bench_in = parse_float("bench_rm")
-            squat_in = parse_float("squat_rm")
-            dead_in  = parse_float("deadlift_rm")
-            ohp_in   = parse_float("ohp_rm")
+            bench_in = p("bench_rm")
+            squat_in = p("squat_rm")
+            dead_in  = p("deadlift_rm")
+            ohp_in   = p("ohp_rm")
 
-            # store as kg
-            def to_kg(v):
-                if v is None: return None
-                return v if st.units == "kg" else v / 2.20462262185
-
-            if bench_in is not None: st.bench = to_kg(bench_in)
-            if squat_in is not None: st.squat = to_kg(squat_in)
-            if dead_in  is not None: st.deadlift = to_kg(dead_in)
-            if ohp_in   is not None: st.ohp = to_kg(ohp_in)
+            # store as kg (only overwrite if user supplied a value)
+            if bench_in is not None:   st.bench    = to_kg(bench_in)
+            if squat_in is not None:   st.squat    = to_kg(squat_in)
+            if dead_in  is not None:   st.deadlift = to_kg(dead_in)
+            if ohp_in   is not None:   st.ohp      = to_kg(ohp_in)
 
             s.commit()
+
+            # try to ensure weeks 1 & 2 exist and have suggested loads seeded
+            try:
+                init_week_rows(1, s)
+                init_week_rows(2, s)
+                s.commit()
+            except Exception:
+                # don't fail the page if seeding hiccups; you can still go to /week/1
+                pass
+
             flash("1RM values saved.", "success")
-            # After saving RMs, (re)seed week 1 & 2 suggested if blank:
-            # init_week_rows will seed if empty due to our earlier changes.
-            init_week_rows(1, s)
-            init_week_rows(2, s)
             return redirect(url_for("week_view", week=1))
 
-        # GET: show form with current values
+        # GET: render with current values (in the user's units)
         ctx = {
-            "units": st.units,
-            "bench_disp": disp(st.bench),
-            "squat_disp": disp(st.squat),
-            "deadlift_disp": disp(st.deadlift),
-            "ohp_disp": disp(st.ohp),
+            "units": st.units or "kg",
+            "bench_disp": to_display(st.bench),
+            "squat_disp": to_display(st.squat),
+            "deadlift_disp": to_display(st.deadlift),
+            "ohp_disp": to_display(st.ohp),
         }
         return render_template("rm_test.html", **ctx)
 
