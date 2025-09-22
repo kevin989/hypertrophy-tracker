@@ -5,10 +5,12 @@ import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from sqlalchemy import create_engine, select, and_, text
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, select, and_, text, Date, TIMESTAMP, Integer, BigInteger
+from sqlalchemy.orm import Session, Mapped, mapped_column
+from datetime import datetime, date, timezone
+from calendar import monthrange
 
-from models import Base, State, Log, Progress
+from models import Base, State, Log, Progress, WorkoutSession
 from logic import DAYS, COMPOUND_RM_MAP, round_to_2p5, compute_new_load
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///local.db")
@@ -118,6 +120,48 @@ def settings():
             return redirect(url_for("settings"))
         return render_template("settings.html", state={"units": st.units})
 
+@app.route("/history")
+@require_login
+def history():
+    ensure_db()
+    with Session(engine) as s:
+        today = date.today()
+        y = int(request.args.get("y", today.year))
+        m = int(request.args.get("m", today.month))
+        days_in_month = monthrange(y, m)[1]
+        sessions = s.scalars(
+            select(WorkoutSession).where(
+                WorkoutSession.session_date >= date(y, m, 1),
+                WorkoutSession.session_date <= date(y, m, days_in_month),
+            ).order_by(WorkoutSession.session_date)
+        ).all()
+        by_day = {}
+        for sess in sessions:
+            by_day.setdefault(sess.session_date.day, []).append(sess)
+        return render_template("history.html", year=y, month=m, days=days_in_month, by_day=by_day)
+
+@app.route("/history/<int:y>/<int:m>/<int:d>")
+@require_login
+def history_day(y, m, d):
+    ensure_db()
+    with Session(engine) as s:
+        sess = s.scalars(
+            select(WorkoutSession).where(WorkoutSession.session_date == date(y, m, d))
+        ).first()
+        if not sess:
+            flash("No workout found for that date.", "error")
+            return redirect(url_for("history", y=y, m=m))
+
+        rows = s.scalars(select(Log).where(Log.week == sess.week, Log.day == sess.day)).all()
+        st = get_or_create_state(s)
+        def show_w(x):
+            return None if x is None else (round(x * 2.20462262185, 2) if st.units == "lb" else x)
+        for r in rows:
+            r.load_last = show_w(r.load_last)
+            r.new_load = show_w(r.new_load)
+
+        return render_template("history_day.html", sess=sess, rows=rows, units=st.units)
+
 @app.route("/rm-test", methods=["GET","POST"])
 @require_login
 def rm_test():
@@ -155,10 +199,53 @@ def week_view(week: int):
 
     with Session(engine) as s:
         st = get_or_create_state(s)
-        init_week_rows(week, s)
+        init_week_rows(week, s)  # seeds Program V1.0 rows if missing, syncs metadata if you added that
 
         if request.method == "POST":
-            # Save bodyweight (stored as kg)
+            # -------- Daily Save & timer (one day at a time via modal) --------
+            save_day = request.form.get("save_day")
+            if save_day:
+                day_int = int(save_day)
+                # timer fields
+                start_iso = request.form.get(f"start_{day_int}")
+                end_iso   = request.form.get(f"end_{day_int}")
+
+                started_at = ended_at = None
+                duration_seconds = None
+                try:
+                    if start_iso:
+                        started_at = datetime.fromisoformat(start_iso.replace("Z", "+00:00"))
+                    if end_iso:
+                        ended_at = datetime.fromisoformat(end_iso.replace("Z", "+00:00"))
+                    if started_at and ended_at:
+                        duration_seconds = int((ended_at - started_at).total_seconds())
+                except Exception:
+                    pass
+
+                # record a session row for today
+                today = datetime.now(timezone.utc).date()
+                sess = s.execute(
+                    select(WorkoutSession).where(
+                        WorkoutSession.week == week,
+                        WorkoutSession.day == day_int,
+                        WorkoutSession.session_date == today,
+                    )
+                ).scalar_one_or_none()
+
+                if sess is None:
+                    sess = WorkoutSession(
+                        week=week, day=day_int, session_date=today,
+                        started_at=started_at, ended_at=ended_at,
+                        duration_seconds=duration_seconds
+                    )
+                    s.add(sess)
+                else:
+                    if started_at: sess.started_at = started_at
+                    if ended_at:   sess.ended_at = ended_at
+                    if duration_seconds is not None:
+                        sess.duration_seconds = duration_seconds
+
+            # -------- Bodyweight (stored in kg) --------
             bw = request.form.get("bodyweight")
             if bw not in (None, ""):
                 try:
@@ -172,10 +259,10 @@ def week_view(week: int):
                 except Exception:
                     pass
 
-            # Save sets and compute next loads
+            # -------- Parse all inputs for the week, compute progression --------
             rows = s.scalars(select(Log).where(Log.week == week)).all()
             for r in rows:
-                # Load (this week) — store in kg as base for progression
+                # Load (this week) — base for progression; store as kg
                 load_field = request.form.get(f"row_{r.id}_load")
                 if load_field not in (None, ""):
                     try:
@@ -189,12 +276,10 @@ def week_view(week: int):
                 for k in ["s1", "s2", "s3"]:
                     val = request.form.get(f"row_{r.id}_{k}")
                     if val not in (None, ""):
-                        try:
-                            setattr(r, k, int(val))
-                        except Exception:
-                            setattr(r, k, None)
+                        try: setattr(r, k, int(val))
+                        except Exception: setattr(r, k, None)
 
-                # Treat S3 as AMRAP for accessories; ignore AMRAP for compounds
+                # Treat S3 as AMRAP for accessories; ignore AMRAP separately
                 amrap_reps = r.s3 if r.category == "accessory" else None
 
                 data = {
@@ -203,10 +288,8 @@ def week_view(week: int):
                     "increment": r.increment,
                     "category": r.category,
                     "sets": r.sets,
-                    "s1": r.s1,
-                    "s2": r.s2,
-                    "s3": r.s3,
-                    "amrap": amrap_reps,
+                    "s1": r.s1, "s2": r.s2, "s3": r.s3,
+                    "amrap": amrap_reps
                 }
                 r.new_load = compute_new_load(data)
 
@@ -214,8 +297,10 @@ def week_view(week: int):
             flash(f"Week {week} saved.", "success")
             return redirect(url_for("week_view", week=week))
 
-        # ----- GET render -----
-        rows = s.scalars(select(Log).where(Log.week == week).order_by(Log.day, Log.id)).all()
+        # -------- GET render --------
+        rows = s.scalars(
+            select(Log).where(Log.week == week).order_by(Log.day, Log.id)
+        ).all()
 
         def display_w(x):
             if x is None:
@@ -223,7 +308,7 @@ def week_view(week: int):
             return round(x * 2.20462262185, 2) if st.units == "lb" else x
 
         grouped = []
-        for day_idx in range(1, 7 + 1):
+        for day_idx in range(1, 8):
             sub = [r for r in rows if r.day == day_idx]
             title = sub[0].day_title if sub else f"Day {day_idx}"
             for r in sub:
@@ -231,6 +316,7 @@ def week_view(week: int):
                 r.new_load = display_w(r.new_load)
             grouped.append((title, sub))
 
+        # Bodyweight (display units)
         bw_val = None
         prog = s.scalars(select(Progress).where(Progress.week == week)).first()
         if prog:

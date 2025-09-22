@@ -131,6 +131,9 @@
         <a class="btn-ghost {{ 'active-link' if request.endpoint=='rm_test' else '' }}" href="{{ url_for('rm_test') }}">RM Test</a>
         <a class="btn-ghost {{ 'active-link' if request.endpoint=='settings' else '' }}" href="{{ url_for('settings') }}">Settings</a>
         <a class="btn-ghost" href="{{ url_for('export_xlsx') }}">Export</a>
+        <a class="nav-link" href="{{ url_for('week_view', week=1) }}">Workouts</a>
+        <a class="nav-link" href="{{ url_for('history') }}">History</a>
+
 
         <!-- Weeks dropdown -->
         <div class="relative">
@@ -168,6 +171,8 @@
         <a class="btn-secondary" href="{{ url_for('rm_test') }}">RM Test</a>
         <a class="btn-secondary" href="{{ url_for('settings') }}">Settings</a>
         <a class="btn-secondary" href="{{ url_for('export_xlsx') }}">Export</a>
+        <a class="nav-link" href="{{ url_for('week_view', week=1) }}">Workouts</a>
+        <a class="nav-link" href="{{ url_for('history') }}">History</a>
         <div class="col-span-2">
           <div class="font-semibold text-slate-300 mb-1">Weeks</div>
           <div class="grid grid-cols-6 gap-1">

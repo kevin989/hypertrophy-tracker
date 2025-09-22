@@ -38,3 +38,14 @@ class Progress(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     week: Mapped[int] = mapped_column(Integer, unique=True, index=True)
     bodyweight: Mapped[float] = mapped_column(Float)
+
+class WorkoutSession(Base):
+    __tablename__ = "workout_session"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    week: Mapped[int] = mapped_column(Integer, nullable=False)
+    day: Mapped[int] = mapped_column(Integer, nullable=False)
+    session_date = mapped_column(Date, nullable=False)  # e.g., 2025-09-22 (local date is fine)
+    started_at = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    ended_at   = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    duration_seconds: Mapped[int] = mapped_column(Integer, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=True)
