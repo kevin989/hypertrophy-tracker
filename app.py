@@ -43,7 +43,6 @@ def healthz():
         return f"db error: {e}", 500
     
 @app.route("/rm-test-health")
-@require_login
 def rm_test_health():
     ensure_db()
     with Session(engine) as s:
