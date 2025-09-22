@@ -101,16 +101,13 @@ def logout():
     return redirect(url_for("dashboard"))
 
 @app.route("/")
-def rm_test():
-    ensure_db()
 def index():
     return redirect(url_for("dashboard"))
 
 @app.route("/settings", methods=["GET","POST"])
 @require_login
-def rm_test():
-    ensure_db()
 def settings():
+    ensure_db()
     with Session(engine) as s:
         st = get_or_create_state(s)
         if request.method == "POST":
@@ -125,7 +122,6 @@ def settings():
 @require_login
 def rm_test():
     ensure_db()
-def rm_test():
     with Session(engine) as s:
         st = get_or_create_state(s)
         if request.method == "POST":
@@ -150,9 +146,8 @@ def rm_test():
 
 @app.route("/week/<int:week>", methods=["GET","POST"])
 @require_login
-def rm_test():
-    ensure_db()
 def week_view(week: int):
+    ensure_db()
     if week < 1 or week > 12:
         flash("Week must be 1–12.", "error")
         return redirect(url_for("dashboard"))
@@ -210,9 +205,8 @@ def week_view(week: int):
 
 @app.route("/dashboard")
 @require_login
-def rm_test():
-    ensure_db()
 def dashboard():
+    ensure_db()
     with Session(engine) as s:
         st = get_or_create_state(s)
         # BW chart
@@ -246,9 +240,8 @@ def dashboard():
 
 @app.route("/export.xlsx")
 @require_login
-def rm_test():
-    ensure_db()
 def export_xlsx():
+    ensure_db()
     with Session(engine) as s:
         logs = s.scalars(select(Log)).all()
         prog = s.scalars(select(Progress)).all()
