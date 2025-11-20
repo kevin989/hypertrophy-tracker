@@ -49,3 +49,12 @@ class WorkoutSession(Base):
     ended_at   = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+
+class Settings(Base):
+    __tablename__ = "settings"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    units: Mapped[str] = mapped_column(String(2), default="kg")  # 'kg' or 'lb'
+    bench: Mapped[float | None] = mapped_column(Float, nullable=True)
+    squat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    deadlift: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ohp: Mapped[float | None] = mapped_column(Float, nullable=True)

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, date, timezone
 from calendar import monthrange
 
-from models import Base, State, Log, Progress, WorkoutSession
+from models import Base, State, Log, Progress, WorkoutSession, Settings 
 from logic import DAYS, COMPOUND_RM_MAP, round_to_2p5, compute_new_load
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///local.db")
@@ -91,6 +91,64 @@ def seed_from_rms_for_row(row, st, week: int, rm_map: dict):
     pct = _percent_for_week(week)
     load_kg = _round_kg_to_2p5(one_rm * pct)
     row.load_last = load_kg
+
+# ------------ 1RM estimation (Epley) and updater ------------
+def epley_1rm(weight_kg: float, reps: int) -> float:
+    """
+    Epley: 1RM ≈ w * (1 + reps/30). Returns kg. Requires reps >= 1 and weight > 0.
+    """
+    if not weight_kg or weight_kg <= 0 or not reps or reps < 1:
+        return 0.0
+    return weight_kg * (1.0 + reps / 30.0)
+
+# Map exercises to which Settings 1RM they influence
+ESTIMATED_RM_MAP = {
+    # Squat
+    "Back Squat": "squat",
+
+    # Bench (barbell focus; include close-grip as a conservative bench estimator)
+    "Flat Barbell Bench Press": "bench",
+    "Close-Grip Bench Press": "bench",
+
+    # Overhead Press
+    "Overhead Press (Barbell/DB)": "ohp",
+    "Seated DB Overhead Press": "ohp",
+
+    # Deadlift
+    "Deadlift": "deadlift",
+}
+
+def update_1rms_from_rows(settings_obj, log_rows):
+    """
+    Scan this POST's rows for best Epley estimates per lift type, compare to stored 1RMs,
+    and update + return a list of (lift_name, old_kg, new_kg) when a PR is detected.
+    """
+    best_est = {"bench": 0.0, "squat": 0.0, "deadlift": 0.0, "ohp": 0.0}
+
+    # For each row, use the highest reps among S1..S3 at the "load_last" *this week*.
+    for r in log_rows:
+        rm_key = ESTIMATED_RM_MAP.get(r.exercise)
+        if not rm_key:
+            continue
+
+        reps_candidates = [r.s1 or 0, r.s2 or 0, r.s3 or 0]
+        max_reps = max(reps_candidates) if reps_candidates else 0
+        if not max_reps or not r.load_last:
+            continue
+
+        est = epley_1rm(r.load_last, max_reps)
+        if est > best_est[rm_key]:
+            best_est[rm_key] = est
+
+    # Compare to stored and update any PRs
+    pr_list = []
+    for key in ["bench", "squat", "deadlift", "ohp"]:
+        current = getattr(settings_obj, key, None) or 0.0
+        if best_est[key] > current:
+            pr_list.append((key, current, best_est[key]))
+            setattr(settings_obj, key, best_est[key])
+
+    return pr_list
 
 def require_login(f):
     @wraps(f)
