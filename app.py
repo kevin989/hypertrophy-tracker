@@ -114,14 +114,14 @@ ESTIMATED_RM_MAP = {
     "Deadlift": "deadlift",
 }
 
-def update_1rms_from_rows(settings_obj, log_rows):
+def update_1rms_from_rows(state_obj, log_rows):
     """
-    Scan this POST's rows for best Epley estimates per lift type, compare to stored 1RMs,
-    and update + return a list of (lift_name, old_kg, new_kg) when a PR is detected.
+    Scan this set of Log rows for best Epley estimates per lift type, compare to State.rms,
+    and update + return a list of (rm_key, old_kg, new_kg) when a PR is detected.
     """
+    # best estimated 1RM in kg per lift key
     best_est = {"bench": 0.0, "squat": 0.0, "deadlift": 0.0, "ohp": 0.0}
 
-    # For each row, use the highest reps among S1..S3 at the "load_last" *this week*.
     for r in log_rows:
         rm_key = ESTIMATED_RM_MAP.get(r.exercise)
         if not rm_key:
@@ -132,18 +132,22 @@ def update_1rms_from_rows(settings_obj, log_rows):
         if not max_reps or not r.load_last:
             continue
 
-        est = epley_1rm(r.load_last, max_reps)
+        est = epley_1rm(r.load_last, max_reps)  # r.load_last is stored in kg
         if est > best_est[rm_key]:
             best_est[rm_key] = est
 
-    # Compare to stored and update any PRs
+    # compare to stored rms in State.rms
+    rms = state_obj.rms or {}
     pr_list = []
+
     for key in ["bench", "squat", "deadlift", "ohp"]:
-        current = getattr(settings_obj, key, None) or 0.0
+        current = rms.get(key) or 0.0
         if best_est[key] > current:
             pr_list.append((key, current, best_est[key]))
-            setattr(settings_obj, key, best_est[key])
+            rms[key] = best_est[key]
 
+    # write back updated dict
+    state_obj.rms = rms
     return pr_list
 
 LIFT_LABELS = {
@@ -504,8 +508,10 @@ def week_view(week: int):
                 for k in ["s1", "s2", "s3"]:
                     val = request.form.get(f"row_{r.id}_{k}")
                     if val not in (None, ""):
-                        try: setattr(r, k, int(val))
-                        except Exception: setattr(r, k, None)
+                        try:
+                            setattr(r, k, int(val))
+                        except Exception:
+                            setattr(r, k, None)
 
                 # Treat S3 as AMRAP for accessories; ignore AMRAP separately
                 amrap_reps = r.s3 if r.category == "accessory" else None
@@ -517,9 +523,35 @@ def week_view(week: int):
                     "category": r.category,
                     "sets": r.sets,
                     "s1": r.s1, "s2": r.s2, "s3": r.s3,
-                    "amrap": amrap_reps
+                    "amrap": amrap_reps,
                 }
                 r.new_load = compute_new_load(data)
+
+            # ---- PR detection (Epley) for the saved day only ----
+            pr_hits = []
+            if save_day:
+                try:
+                    day_int = int(save_day)
+                    rows_for_day = [r for r in rows if r.day == day_int]
+                    pr_hits = update_1rms_from_rows(st, rows_for_day)
+                except Exception:
+                    pr_hits = []
+
+            # flash any PR messages
+            if pr_hits:
+                for key, old_kg, new_kg in pr_hits:
+                    if st.units == "lb":
+                        old_disp = round(old_kg * 2.20462262185, 1) if old_kg else 0
+                        new_disp = round(new_kg * 2.20462262185, 1)
+                        unit_lbl = "lb"
+                    else:
+                        old_disp = round(old_kg, 1) if old_kg else 0
+                        new_disp = round(new_kg, 1)
+                        unit_lbl = "kg"
+
+                    lift_label = {"bench": "Bench", "squat": "Squat",
+                                  "deadlift": "Deadlift", "ohp": "Overhead Press"}[key]
+                    flash(f"New 1 RM! {lift_label}: {old_disp} → {new_disp} {unit_lbl}", "success")
 
             s.commit()
             flash(f"Week {week} saved.", "success")
