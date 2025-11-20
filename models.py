@@ -1,5 +1,6 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer, Float, Text, JSON, UniqueConstraint, Date, TIMESTAMP, BigInteger
+from sqlalchemy import String, Integer, Float, Text, JSON, UniqueConstraint, Date, TIMESTAMP, BigInteger, DateTime
+from datetime import datetime, timezone
 
 class Base(DeclarativeBase):
     pass
@@ -58,3 +59,25 @@ class Settings(Base):
     squat: Mapped[float | None] = mapped_column(Float, nullable=True)
     deadlift: Mapped[float | None] = mapped_column(Float, nullable=True)
     ohp: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+class PRHistory(Base):
+    __tablename__ = "pr_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
+    # 'bench', 'squat', 'deadlift', 'ohp'
+    lift_key: Mapped[str] = mapped_column(String(20))
+
+    # 1RM estimate in kg at time of PR (Epley)
+    pr_kg: Mapped[float] = mapped_column(Float)
+
+    # Context
+    week: Mapped[int] = mapped_column(Integer)
+    day: Mapped[int] = mapped_column(Integer)
+    session_date: Mapped[Date] = mapped_column(Date)
+
+    # Timestamp of when PR was recorded
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc)
+    )

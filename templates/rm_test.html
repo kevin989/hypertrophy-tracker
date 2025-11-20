@@ -108,6 +108,33 @@
       </div>
   </div>
 </div>
+      <div class="card mt-4">
+        <h3 class="text-lg font-semibold mb-2">PR History</h3>
+        {% if pr_history and pr_history|length > 0 %}
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Week/Day</th>
+                <th>Lift</th>
+                <th>New 1RM ({{ units }})</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pr in pr_history %}
+                <tr>
+                  <td>{{ pr.date }}</td>
+                  <td>W{{ pr.week }} / D{{ pr.day }}</td>
+                  <td>{{ pr.lift }}</td>
+                  <td>{{ pr.value }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        {% else %}
+          <p class="text-sm text-slate-600">No PRs recorded yet. Hit some heavy sets and they’ll show up here.</p>
+        {% endif %}
+      </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function(){

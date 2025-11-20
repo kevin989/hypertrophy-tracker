@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, date, timezone
 from calendar import monthrange
 
-from models import Base, State, Log, Progress, WorkoutSession, Settings 
+from models import Base, State, Log, Progress, WorkoutSession, Settings, PRHistory
 from logic import DAYS, COMPOUND_RM_MAP, round_to_2p5, compute_new_load
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///local.db")
@@ -408,8 +408,33 @@ def rm_test():
             flash("1RM values saved.", "success")
             return redirect(url_for("rm_test"))
 
-        # GET: current display values + progress table
+        # GET: current display values + progress + PR history
         progress_rows = build_1rm_progress(s, st)
+
+        # latest PRs first (most recent session_date, then newest id)
+        pr_rows = s.scalars(
+            select(PRHistory).order_by(
+                PRHistory.session_date.desc(),
+                PRHistory.id.desc()
+            )
+        ).all()
+
+        # convert PRs to display units
+        pr_history = []
+        for pr in pr_rows:
+            if st.units == "lb":
+                val = round(pr.pr_kg * 2.20462262185, 1)
+            else:
+                val = round(pr.pr_kg, 1)
+
+            pr_history.append({
+                "date": pr.session_date.isoformat(),
+                "week": pr.week,
+                "day": pr.day,
+                "lift": LIFT_LABELS.get(pr.lift_key, pr.lift_key.title()),
+                "value": val,
+            })
+
         ctx = {
             "units": st.units or "kg",
             "bench_disp": disp_rm("bench"),
@@ -417,6 +442,7 @@ def rm_test():
             "deadlift_disp": disp_rm("deadlift"),
             "ohp_disp": disp_rm("ohp"),
             "progress": progress_rows,
+            "pr_history": pr_history,
         }
         return render_template("rm_test.html", **ctx)
 
@@ -529,6 +555,7 @@ def week_view(week: int):
 
             # ---- PR detection (Epley) for the saved day only ----
             pr_hits = []
+            day_int = None
             if save_day:
                 try:
                     day_int = int(save_day)
@@ -537,9 +564,22 @@ def week_view(week: int):
                 except Exception:
                     pr_hits = []
 
-            # flash any PR messages
-            if pr_hits:
+            # flash any PR messages AND log PRs to PRHistory
+            if pr_hits and day_int is not None:
+                # determine session_date (use today's date in UTC; matches WorkoutSession)
+                today = datetime.now(timezone.utc).date()
+
                 for key, old_kg, new_kg in pr_hits:
+                    # log PR to history in kg
+                    s.add(PRHistory(
+                        lift_key=key,
+                        pr_kg=new_kg,
+                        week=week,
+                        day=day_int,
+                        session_date=today,
+                    ))
+
+                    # user-facing notification in their chosen units
                     if st.units == "lb":
                         old_disp = round(old_kg * 2.20462262185, 1) if old_kg else 0
                         new_disp = round(new_kg * 2.20462262185, 1)
@@ -549,8 +589,12 @@ def week_view(week: int):
                         new_disp = round(new_kg, 1)
                         unit_lbl = "kg"
 
-                    lift_label = {"bench": "Bench", "squat": "Squat",
-                                  "deadlift": "Deadlift", "ohp": "Overhead Press"}[key]
+                    lift_label = {
+                        "bench": "Bench",
+                        "squat": "Squat",
+                        "deadlift": "Deadlift",
+                        "ohp": "Overhead Press",
+                    }[key]
                     flash(f"New 1 RM! {lift_label}: {old_disp} → {new_disp} {unit_lbl}", "success")
 
             s.commit()
