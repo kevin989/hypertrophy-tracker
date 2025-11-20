@@ -46,16 +46,11 @@ def healthz():
 def rm_test_health():
     ensure_db()
     with Session(engine) as s:
-        st = s.get(Settings, 1)
-        if st is None:
-            return {"ok": False, "reason": "Settings row missing"}, 200
+        st = get_or_create_state(s)
         return {
             "ok": True,
             "units": st.units,
-            "bench_kg": st.bench,
-            "squat_kg": st.squat,
-            "deadlift_kg": st.deadlift,
-            "ohp_kg": st.ohp,
+            "rms": st.rms,
         }, 200
 
 app.secret_key = os.environ.get("FLASK_SECRET", "dev-secret")
@@ -72,7 +67,7 @@ def _round_kg_to_2p5(x: float) -> float:
 def seed_from_rms_for_row(row, st, week: int, rm_map: dict):
     """
     If this exercise maps to an RM and week is 1 or 2,
-    seed row.load_last from st.<rm> * pct (rounded) IF it's empty.
+    seed row.load_last from st.rms[rm_key] * pct (rounded) IF it's empty.
     """
     if row.load_last not in (None, 0) and row.load_last is not None:
         return  # already seeded / logged
@@ -84,7 +79,8 @@ def seed_from_rms_for_row(row, st, week: int, rm_map: dict):
     if not rm_key:
         return  # no RM mapping for this exercise (e.g., accessories)
 
-    one_rm = getattr(st, rm_key, None)
+    rms = st.rms or {}
+    one_rm = rms.get(rm_key)
     if not one_rm:
         return  # user hasn't set this RM yet
 
@@ -149,6 +145,54 @@ def update_1rms_from_rows(settings_obj, log_rows):
             setattr(settings_obj, key, best_est[key])
 
     return pr_list
+
+LIFT_LABELS = {
+    "bench": "Bench",
+    "squat": "Squat",
+    "deadlift": "Deadlift",
+    "ohp": "Overhead Press",
+}
+
+def build_1rm_progress(s: Session, st: State):
+    """
+    Build an estimated 1RM history per week per lift using Epley
+    based on your logged sets in Log.
+    Returns a list of dicts: {week, lift, value}.
+    """
+    # All rows for exercises that map to an RM key
+    rows = s.scalars(
+        select(Log).where(Log.exercise.in_(list(ESTIMATED_RM_MAP.keys())))
+    ).all()
+
+    best = {}  # (rm_key, week) -> best estimated 1RM in kg
+
+    for r in rows:
+        rm_key = ESTIMATED_RM_MAP.get(r.exercise)
+        if not rm_key:
+            continue
+
+        reps = max((r.s1 or 0), (r.s2 or 0), (r.s3 or 0))
+        if not reps or not r.load_last:
+            continue
+
+        est_kg = epley_1rm(r.load_last, reps)
+        key = (rm_key, r.week)
+        if est_kg > best.get(key, 0.0):
+            best[key] = est_kg
+
+    # Convert to display units and sort by week
+    out = []
+    for (rm_key, week), est_kg in sorted(best.items(), key=lambda x: (x[0][1], x[0][0])):
+        if st.units == "lb":
+            val = round(est_kg * 2.20462262185, 1)
+        else:
+            val = round(est_kg, 1)
+        out.append({
+            "week": week,
+            "lift": LIFT_LABELS.get(rm_key, rm_key.title()),
+            "value": val,
+        })
+    return out
 
 def require_login(f):
     @wraps(f)
@@ -304,48 +348,35 @@ def history_day(y, m, d):
 @require_login
 def rm_test():
     """
-    Robust RM Test page:
-    - Creates a Settings row if missing.
-    - Stores bench/squat/deadlift/ohp in kg.
-    - On GET, shows current values in user's units (kg/lb).
-    - On POST, saves values and re-seeds week 1 & 2 suggested loads.
+    RM Test page:
+    - Uses State.rms to store bench/squat/deadlift/ohp in kg.
+    - On GET, shows current values in a side table.
+    - On POST, updates rms and (optionally) allows Week 1 & 2 seeding.
     """
     ensure_db()
     with Session(engine) as s:
-        # ---- get or create Settings row safely (no external helpers) ----
-        st = s.get(Settings, 1)
-        if st is None:
-            st = Settings(
-                id=1,
-                units="kg",          # default to kg
-                bench=None,
-                squat=None,
-                deadlift=None,
-                ohp=None,
-            )
-            s.add(st)
-            s.commit()
-
-        # convenience converters based on current units
-        def to_display(x):
-            if x is None:
-                return ""
-            return round(x * 2.20462262185, 2) if st.units == "lb" else round(x, 2)
+        st = get_or_create_state(s)  # holds units + rms JSON
 
         def to_kg(x):
             if x is None:
                 return None
             return x if st.units == "kg" else x / 2.20462262185
 
+        def disp_rm(key: str):
+            rms = st.rms or {}
+            v = rms.get(key)
+            if v is None:
+                return ""
+            return round(v * 2.20462262185, 2) if st.units == "lb" else round(v, 2)
+
         if request.method == "POST":
-            # parse numeric inputs in user units (kg or lb)
             def p(name):
                 v = request.form.get(name)
                 if v in (None, ""):
                     return None
                 try:
                     return float(v)
-                except Exception:
+                except:
                     return None
 
             bench_in = p("bench_rm")
@@ -353,33 +384,35 @@ def rm_test():
             dead_in  = p("deadlift_rm")
             ohp_in   = p("ohp_rm")
 
-            # store as kg (only overwrite if user supplied a value)
-            if bench_in is not None:   st.bench    = to_kg(bench_in)
-            if squat_in is not None:   st.squat    = to_kg(squat_in)
-            if dead_in  is not None:   st.deadlift = to_kg(dead_in)
-            if ohp_in   is not None:   st.ohp      = to_kg(ohp_in)
+            rms = st.rms or {}
+            if bench_in is not None:   rms["bench"]    = to_kg(bench_in)
+            if squat_in is not None:   rms["squat"]    = to_kg(squat_in)
+            if dead_in  is not None:   rms["deadlift"] = to_kg(dead_in)
+            if ohp_in   is not None:   rms["ohp"]      = to_kg(ohp_in)
 
+            st.rms = rms
             s.commit()
 
-            # try to ensure weeks 1 & 2 exist and have suggested loads seeded
+            # Optionally reseed week 1 & 2 suggestions based on new rms
             try:
                 init_week_rows(1, s)
                 init_week_rows(2, s)
                 s.commit()
             except Exception:
-                # don't fail the page if seeding hiccups; you can still go to /week/1
                 pass
 
             flash("1RM values saved.", "success")
-            return redirect(url_for("week_view", week=1))
+            return redirect(url_for("rm_test"))
 
-        # GET: render with current values (in the user's units)
+        # GET: current display values + progress table
+        progress_rows = build_1rm_progress(s, st)
         ctx = {
             "units": st.units or "kg",
-            "bench_disp": to_display(st.bench),
-            "squat_disp": to_display(st.squat),
-            "deadlift_disp": to_display(st.deadlift),
-            "ohp_disp": to_display(st.ohp),
+            "bench_disp": disp_rm("bench"),
+            "squat_disp": disp_rm("squat"),
+            "deadlift_disp": disp_rm("deadlift"),
+            "ohp_disp": disp_rm("ohp"),
+            "progress": progress_rows,
         }
         return render_template("rm_test.html", **ctx)
 
