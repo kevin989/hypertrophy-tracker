@@ -23,7 +23,7 @@ engine = create_engine(
 
 _db_ready = False
 def ensure_db():
-    """Connect once and create tables lazily."""
+    #Connect once and create tables lazily.
     global _db_ready
     if _db_ready:
         return
@@ -65,11 +65,11 @@ def _round_kg_to_2p5(x: float) -> float:
     return round(x / 2.5) * 2.5
 
 def seed_from_rms_for_row(row, st, week: int, rm_map: dict):
-    """
-    If this exercise maps to an RM and week is 1 or 2,
-    seed row.load_last from st.rms[rm_key] * pct (rounded) IF it's empty.
-    RMs are stored in State.rms as kg.
-    """
+
+    #If this exercise maps to an RM and week is 1 or 2,
+    #seed row.load_last from st.rms[rm_key] * pct (rounded) IF it's empty.
+    #RMs are stored in State.rms as kg.
+
     # don't overwrite something already logged
     if row.load_last not in (None, 0) and row.load_last is not None:
         return
@@ -92,9 +92,9 @@ def seed_from_rms_for_row(row, st, week: int, rm_map: dict):
 
 # ------------ 1RM estimation (Epley) and updater ------------
 def epley_1rm(weight_kg: float, reps: int) -> float:
-    """
-    Epley: 1RM ≈ w * (1 + reps/30). Returns kg. Requires reps >= 1 and weight > 0.
-    """
+
+    #Epley: 1RM ≈ w * (1 + reps/30). Returns kg. Requires reps >= 1 and weight > 0.
+
     if not weight_kg or weight_kg <= 0 or not reps or reps < 1:
         return 0.0
     return weight_kg * (1.0 + reps / 30.0)
@@ -117,11 +117,11 @@ ESTIMATED_RM_MAP = {
 }
 
 def update_1rms_from_rows(state_obj, log_rows):
-    """
-    Scan this set of Log rows for best Epley estimates per lift type, compare to State.rms,
-    and update + return a list of (rm_key, old_kg, new_kg) when a PR is detected.
-    """
-    # best estimated 1RM in kg per lift key
+
+    #Scan this set of Log rows for best Epley estimates per lift type, compare to State.rms,
+    #and update + return a list of (rm_key, old_kg, new_kg) when a PR is detected.
+
+        # best estimated 1RM in kg per lift key
     best_est = {"bench": 0.0, "squat": 0.0, "deadlift": 0.0, "ohp": 0.0}
 
     for r in log_rows:
@@ -160,11 +160,10 @@ LIFT_LABELS = {
 }
 
 def build_1rm_progress(s: Session, st: State):
-    """
-    Build an estimated 1RM history per week per lift using Epley
-    based on your logged sets in Log.
-    Returns a list of dicts: {week, lift, value}.
-    """
+    #Build an estimated 1RM history per week per lift using Epley
+    #based on your logged sets in Log.
+    #Returns a list of dicts: {week, lift, value}.
+
     # All rows for exercises that map to an RM key
     rows = s.scalars(
         select(Log).where(Log.exercise.in_(list(ESTIMATED_RM_MAP.keys())))
@@ -217,10 +216,8 @@ def get_or_create_state(s: Session) -> State:
     return st
 
 def init_week_rows(week: int, s: Session):
-    """
-    Ensure all rows for this week exist and metadata matches the active program.
-    Does NOT overwrite user loads/reps; only seeds Week 1/2 suggested loads from RM Test.
-    """
+    #Ensure all rows for this week exist and metadata matches the active program.
+    #Does NOT overwrite user loads/reps; only seeds Week 1/2 suggested loads from RM Test.
     from logic import DAYS, COMPOUND_RM_MAP  # DAYS = PROGRAM_V1 list
 
     st = get_or_create_state(s)
@@ -353,12 +350,10 @@ def history_day(y, m, d):
 @app.route("/rm-test", methods=["GET", "POST"])
 @require_login
 def rm_test():
-    """
-    RM Test page:
-    - Uses State.rms to store bench/squat/deadlift/ohp in kg.
-    - On GET, shows current values in a side table + progress + PR history.
-    - On POST, updates State.rms and reseeds Week 1 & 2 suggested loads.
-    """
+    #RM Test page:
+    #- Uses State.rms to store bench/squat/deadlift/ohp in kg.
+    #- On GET, shows current values in a side table + progress + PR history.
+    #- On POST, updates State.rms and reseeds Week 1 & 2 suggested loads.
     ensure_db()
     with Session(engine) as s:
         st = get_or_create_state(s)  # holds units + rms JSON
@@ -702,11 +697,11 @@ def export_xlsx():
 @app.route("/debug-state")
 @require_login
 def debug_state():
+    #Debug: force a change into State.rms so we can confirm DB writes are working.
     ensure_db()
     with Session(engine) as s:
         st = get_or_create_state(s)
 
-        # TEST: force a change into the JSON column
         rms = st.rms or {}
         rms["squat"] = 123.0
         rms["_manual_test"] = (rms.get("_manual_test") or 0) + 1
@@ -715,7 +710,7 @@ def debug_state():
 
         out = {
             "units": st.units,
-            "rms": getattr(st, "rms", None),
+            "rms": st.rms,
         }
         return out, 200
 
@@ -739,6 +734,7 @@ def debug_settings():
 @app.route("/debug-db")
 @require_login
 def debug_db():
+    #Show which DATABASE_URL the app is actually using.
     return {
         "DATABASE_URL": os.environ.get("DATABASE_URL", "NO DATABASE_URL SET"),
     }, 200
