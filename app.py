@@ -685,5 +685,17 @@ def export_xlsx():
         return send_file(bio, as_attachment=True, download_name="hypertrophy_export.xlsx",
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
+@app.route("/debug-state")
+@require_login
+def debug_state():
+    ensure_db()
+    with Session(engine) as s:
+        st = get_or_create_state(s)
+        out = {
+            "units": st.units,
+            "rms": getattr(st, "rms", None),
+        }
+        return out, 200
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
