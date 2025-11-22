@@ -21,16 +21,14 @@ engine = create_engine(
     pool_recycle=1800
 )
 
-_db_ready = False
 def ensure_db():
-    #Connect once and create tables lazily.
-    global _db_ready
-    if _db_ready:
-        return
+    """
+    Ensure DB connection is alive and all tables exist.
+    Safe to call as often as needed; create_all is idempotent.
+    """
     with engine.connect() as conn:
         conn.execute(text("select 1"))
     Base.metadata.create_all(engine)
-    _db_ready = True
 
 app = Flask(__name__)
 
