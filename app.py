@@ -736,5 +736,12 @@ def debug_settings():
             "ohp": st.ohp,
         }, 200
 
+@app.route("/debug-db")
+@require_login
+def debug_db():
+    return {
+        "DATABASE_URL": os.environ.get("DATABASE_URL", "NO DATABASE_URL SET"),
+    }, 200
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
