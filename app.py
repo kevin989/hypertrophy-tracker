@@ -376,7 +376,7 @@ def rm_test():
             return round(v * 2.20462262185, 2) if st.units == "lb" else round(v, 2)
 
         if request.method == "POST":
-            # parse numeric inputs in user units
+            # --- parse numeric inputs in user units ---
             def p(name):
                 v = request.form.get(name)
                 if v in (None, ""):
@@ -391,7 +391,12 @@ def rm_test():
             dead_in  = p("deadlift_rm")
             ohp_in   = p("ohp_rm")
 
+            # always start from current rms dict
             rms = st.rms or {}
+
+            # DEBUG: flash what we parsed so we know POST is really running
+            flash(f"Parsed RMs — bench:{bench_in}, squat:{squat_in}, dead:{dead_in}, ohp:{ohp_in}", "info")
+
             if bench_in is not None:
                 rms["bench"] = to_kg(bench_in)
             if squat_in is not None:
@@ -400,6 +405,9 @@ def rm_test():
                 rms["deadlift"] = to_kg(dead_in)
             if ohp_in is not None:
                 rms["ohp"] = to_kg(ohp_in)
+
+            # also drop a debug marker so we can see *something* change
+            rms["_debug_marker"] = (rms.get("_debug_marker") or 0) + 1
 
             st.rms = rms
             s.commit()
