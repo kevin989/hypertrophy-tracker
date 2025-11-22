@@ -7,9 +7,15 @@ class Base(DeclarativeBase):
 
 class State(Base):
     __tablename__ = "state"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    units: Mapped[str] = mapped_column(String(4), default="kg")
-    rms: Mapped[dict] = mapped_column(JSON, default={"squat": None, "bench": None, "deadlift": None, "ohp": None})
+    id = Column(Integer, primary_key=True)
+
+    units = Column(String, default="kg")
+
+    # Store 1RMs in kg (NULL = not set)
+    bench = Column(Float, nullable=True)
+    squat = Column(Float, nullable=True)
+    deadlift = Column(Float, nullable=True)
+    ohp = Column(Float, nullable=True)
 
 class Log(Base):
     __tablename__ = "log"
