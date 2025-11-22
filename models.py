@@ -1,5 +1,5 @@
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import String, Integer, Float, Text, JSON, UniqueConstraint, Date, TIMESTAMP, BigInteger, DateTime
+from sqlalchemy import String, Integer, Float, Text, JSON, UniqueConstraint, Date, TIMESTAMP, BigInteger, DateTime, Column
 from datetime import datetime, timezone
 
 class Base(DeclarativeBase):
