@@ -702,7 +702,6 @@ def debug_state():
 def debug_settings():
     ensure_db()
     with Session(engine) as s:
-        from models import Settings  # only if you have this model
         st = s.get(Settings, 1)
         if not st:
             return {"ok": False, "reason": "no Settings row"}, 200
