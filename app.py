@@ -696,6 +696,24 @@ def debug_state():
             "rms": getattr(st, "rms", None),
         }
         return out, 200
+    
+@app.route("/debug-settings")
+@require_login
+def debug_settings():
+    ensure_db()
+    with Session(engine) as s:
+        from models import Settings  # only if you have this model
+        st = s.get(Settings, 1)
+        if not st:
+            return {"ok": False, "reason": "no Settings row"}, 200
+        return {
+            "ok": True,
+            "units": st.units,
+            "bench": st.bench,
+            "squat": st.squat,
+            "deadlift": st.deadlift,
+            "ohp": st.ohp,
+        }, 200
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=True)
