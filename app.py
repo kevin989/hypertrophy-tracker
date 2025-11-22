@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, date, timezone
 from calendar import monthrange
 
-from models import Base, State, Log, Progress, WorkoutSession, Settings, PRHistory
+from models import Base, State, Log, Progress, WorkoutSession, PRHistory
 from logic import DAYS, COMPOUND_RM_MAP, round_to_2p5, compute_new_load
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///local.db")
@@ -350,29 +350,33 @@ def history_day(y, m, d):
 @app.route("/rm-test", methods=["GET", "POST"])
 @require_login
 def rm_test():
-    #RM Test page:
-    #- Uses State.rms to store bench/squat/deadlift/ohp in kg.
-    #- On GET, shows current values in a side table + progress + PR history.
-    #- On POST, updates State.rms and reseeds Week 1 & 2 suggested loads.
+    """
+    RM Test page:
+    - Uses State.rms to store squat/bench/deadlift/ohp in kg.
+    - On GET, shows current values in user's units + progress + PR history.
+    - On POST, updates State.rms and reseeds Week 1 & 2 suggested loads.
+    """
     ensure_db()
     with Session(engine) as s:
         st = get_or_create_state(s)  # holds units + rms JSON
 
-        def to_kg(x):
+        def to_kg(x: float | None) -> float | None:
             if x is None:
                 return None
             return x if st.units == "kg" else x / 2.20462262185
 
-        def disp_rm(key: str):
+        def disp_rm(key: str) -> str:
+            """Return the stored RM for this key in display units, as a string."""
             rms = st.rms or {}
             v = rms.get(key)
             if v is None:
                 return ""
-            return round(v * 2.20462262185, 2) if st.units == "lb" else round(v, 2)
+            val = v * 2.20462262185 if st.units == "lb" else v
+            return str(round(val, 2))
 
         if request.method == "POST":
-            # --- parse numeric inputs in user units ---
-            def p(name):
+            # --- parse numeric inputs (user units) ---
+            def p(name: str) -> float | None:
                 v = request.form.get(name)
                 if v in (None, ""):
                     return None
@@ -386,11 +390,7 @@ def rm_test():
             dead_in  = p("deadlift_rm")
             ohp_in   = p("ohp_rm")
 
-            # always start from current rms dict
             rms = st.rms or {}
-
-            # DEBUG: flash what we parsed so we know POST is really running
-            flash(f"Parsed RMs — bench:{bench_in}, squat:{squat_in}, dead:{dead_in}, ohp:{ohp_in}", "info")
 
             if bench_in is not None:
                 rms["bench"] = to_kg(bench_in)
@@ -401,9 +401,6 @@ def rm_test():
             if ohp_in is not None:
                 rms["ohp"] = to_kg(ohp_in)
 
-            # also drop a debug marker so we can see *something* change
-            rms["_debug_marker"] = (rms.get("_debug_marker") or 0) + 1
-
             st.rms = rms
             s.commit()
 
@@ -413,23 +410,24 @@ def rm_test():
                 init_week_rows(2, s)
                 s.commit()
             except Exception:
+                # don't kill the page on seeding errors
                 pass
 
             flash("1RM values saved.", "success")
             return redirect(url_for("rm_test"))
 
-        # -------- GET: current display values + progress + PR history --------
+        # -------- GET: current RMs, progress, PR history --------
         progress_rows = build_1rm_progress(s, st)
 
         # latest PRs first (most recent session_date, then newest id)
         pr_rows = s.scalars(
             select(PRHistory).order_by(
                 PRHistory.session_date.desc(),
-                PRHistory.id.desc()
+                PRHistory.id.desc(),
             )
         ).all()
 
-        pr_history = []
+        pr_history: list[dict] = []
         for pr in pr_rows:
             if st.units == "lb":
                 val = round(pr.pr_kg * 2.20462262185, 1)
@@ -697,38 +695,13 @@ def export_xlsx():
 @app.route("/debug-state")
 @require_login
 def debug_state():
-    #Debug: force a change into State.rms so we can confirm DB writes are working.
+    """Show current State row for quick inspection."""
     ensure_db()
     with Session(engine) as s:
         st = get_or_create_state(s)
-
-        rms = st.rms or {}
-        rms["squat"] = 123.0
-        rms["_manual_test"] = (rms.get("_manual_test") or 0) + 1
-        st.rms = rms
-        s.commit()
-
-        out = {
+        return {
             "units": st.units,
             "rms": st.rms,
-        }
-        return out, 200
-
-@app.route("/debug-settings")
-@require_login
-def debug_settings():
-    ensure_db()
-    with Session(engine) as s:
-        st = s.get(Settings, 1)
-        if not st:
-            return {"ok": False, "reason": "no Settings row"}, 200
-        return {
-            "ok": True,
-            "units": st.units,
-            "bench": st.bench,
-            "squat": st.squat,
-            "deadlift": st.deadlift,
-            "ohp": st.ohp,
         }, 200
 
 @app.route("/debug-db")
