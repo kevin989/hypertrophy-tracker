@@ -211,8 +211,16 @@ def require_login(f):
 def get_or_create_state(s: Session) -> State:
     st = s.scalars(select(State)).first()
     if not st:
-        st = State(units="kg", rms={"squat": None, "bench": None, "deadlift": None, "ohp": None})
-        s.add(st); s.commit(); s.refresh(st)
+        st = State(
+            units="kg",
+            bench=None,
+            squat=None,
+            deadlift=None,
+            ohp=None,
+        )
+        s.add(st)
+        s.commit()
+        s.refresh(st)
     return st
 
 def init_week_rows(week: int, s: Session):
@@ -352,26 +360,24 @@ def history_day(y, m, d):
 def rm_test():
     """
     RM Test page:
-    - Uses State.rms to store squat/bench/deadlift/ohp in kg.
+    - Uses State columns (bench/squat/deadlift/ohp) in kg.
     - On GET, shows current values in user's units + progress + PR history.
-    - On POST, updates State.rms and reseeds Week 1 & 2 suggested loads.
+    - On POST, updates State and reseeds Week 1 & 2 suggested loads.
     """
     ensure_db()
     with Session(engine) as s:
-        st = get_or_create_state(s)  # holds units + rms JSON
+        st = get_or_create_state(s)  # holds units + 1RMs in kg
 
         def to_kg(x: float | None) -> float | None:
             if x is None:
                 return None
             return x if st.units == "kg" else x / 2.20462262185
 
-        def disp_rm(key: str) -> str:
-            """Return the stored RM for this key in display units, as a string."""
-            rms = st.rms or {}
-            v = rms.get(key)
-            if v is None:
+        def from_kg(x: float | None) -> str:
+            """Return stored value in display units as string."""
+            if x is None:
                 return ""
-            val = v * 2.20462262185 if st.units == "lb" else v
+            val = x * 2.20462262185 if st.units == "lb" else x
             return str(round(val, 2))
 
         if request.method == "POST":
@@ -390,21 +396,25 @@ def rm_test():
             dead_in  = p("deadlift_rm")
             ohp_in   = p("ohp_rm")
 
-            rms = st.rms or {}
+            # debug flash so you can confirm POST ran and parsing worked
+            flash(
+                f"Parsed RMs — bench:{bench_in}, squat:{squat_in}, dead:{dead_in}, ohp:{ohp_in}",
+                "info",
+            )
 
+            # store as kg
             if bench_in is not None:
-                rms["bench"] = to_kg(bench_in)
+                st.bench = to_kg(bench_in)
             if squat_in is not None:
-                rms["squat"] = to_kg(squat_in)
+                st.squat = to_kg(squat_in)
             if dead_in is not None:
-                rms["deadlift"] = to_kg(dead_in)
+                st.deadlift = to_kg(dead_in)
             if ohp_in is not None:
-                rms["ohp"] = to_kg(ohp_in)
+                st.ohp = to_kg(ohp_in)
 
-            st.rms = rms
             s.commit()
 
-            # reseed week 1 & 2 suggested loads based on new rms
+            # reseed week 1 & 2 suggested loads based on new 1RMs
             try:
                 init_week_rows(1, s)
                 init_week_rows(2, s)
@@ -416,10 +426,14 @@ def rm_test():
             flash("1RM values saved.", "success")
             return redirect(url_for("rm_test"))
 
-        # -------- GET: current RMs, progress, PR history --------
+        # -------- GET: current 1RMs, progress, PR history --------
+        bench_disp = from_kg(st.bench)
+        squat_disp = from_kg(st.squat)
+        dead_disp  = from_kg(st.deadlift)
+        ohp_disp   = from_kg(st.ohp)
+
         progress_rows = build_1rm_progress(s, st)
 
-        # latest PRs first (most recent session_date, then newest id)
         pr_rows = s.scalars(
             select(PRHistory).order_by(
                 PRHistory.session_date.desc(),
@@ -444,10 +458,10 @@ def rm_test():
 
         ctx = {
             "units": st.units or "kg",
-            "bench_disp": disp_rm("bench"),
-            "squat_disp": disp_rm("squat"),
-            "deadlift_disp": disp_rm("deadlift"),
-            "ohp_disp": disp_rm("ohp"),
+            "bench_disp": bench_disp,
+            "squat_disp": squat_disp,
+            "deadlift_disp": dead_disp,
+            "ohp_disp": ohp_disp,
             "progress": progress_rows,
             "pr_history": pr_history,
         }
@@ -701,7 +715,10 @@ def debug_state():
         st = get_or_create_state(s)
         return {
             "units": st.units,
-            "rms": st.rms,
+            "bench": st.bench,
+            "squat": st.squat,
+            "deadlift": st.deadlift,
+            "ohp": st.ohp,
         }, 200
 
 @app.route("/debug-db")
