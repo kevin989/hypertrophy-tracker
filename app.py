@@ -68,16 +68,18 @@ def seed_from_rms_for_row(row, st, week: int, rm_map: dict):
     """
     If this exercise maps to an RM and week is 1 or 2,
     seed row.load_last from st.rms[rm_key] * pct (rounded) IF it's empty.
+    RMs are stored in State.rms as kg.
     """
+    # don't overwrite something already logged
     if row.load_last not in (None, 0) and row.load_last is not None:
-        return  # already seeded / logged
+        return
 
     if week not in (1, 2):
         return
 
     rm_key = rm_map.get(row.exercise)
     if not rm_key:
-        return  # no RM mapping for this exercise (e.g., accessories)
+        return  # e.g. accessories
 
     rms = st.rms or {}
     one_rm = rms.get(rm_key)
@@ -354,8 +356,8 @@ def rm_test():
     """
     RM Test page:
     - Uses State.rms to store bench/squat/deadlift/ohp in kg.
-    - On GET, shows current values in a side table.
-    - On POST, updates rms and (optionally) allows Week 1 & 2 seeding.
+    - On GET, shows current values in a side table + progress + PR history.
+    - On POST, updates State.rms and reseeds Week 1 & 2 suggested loads.
     """
     ensure_db()
     with Session(engine) as s:
@@ -374,13 +376,14 @@ def rm_test():
             return round(v * 2.20462262185, 2) if st.units == "lb" else round(v, 2)
 
         if request.method == "POST":
+            # parse numeric inputs in user units
             def p(name):
                 v = request.form.get(name)
                 if v in (None, ""):
                     return None
                 try:
                     return float(v)
-                except:
+                except Exception:
                     return None
 
             bench_in = p("bench_rm")
@@ -389,15 +392,19 @@ def rm_test():
             ohp_in   = p("ohp_rm")
 
             rms = st.rms or {}
-            if bench_in is not None:   rms["bench"]    = to_kg(bench_in)
-            if squat_in is not None:   rms["squat"]    = to_kg(squat_in)
-            if dead_in  is not None:   rms["deadlift"] = to_kg(dead_in)
-            if ohp_in   is not None:   rms["ohp"]      = to_kg(ohp_in)
+            if bench_in is not None:
+                rms["bench"] = to_kg(bench_in)
+            if squat_in is not None:
+                rms["squat"] = to_kg(squat_in)
+            if dead_in is not None:
+                rms["deadlift"] = to_kg(dead_in)
+            if ohp_in is not None:
+                rms["ohp"] = to_kg(ohp_in)
 
             st.rms = rms
             s.commit()
 
-            # Optionally reseed week 1 & 2 suggestions based on new rms
+            # reseed week 1 & 2 suggested loads based on new rms
             try:
                 init_week_rows(1, s)
                 init_week_rows(2, s)
@@ -408,7 +415,7 @@ def rm_test():
             flash("1RM values saved.", "success")
             return redirect(url_for("rm_test"))
 
-        # GET: current display values + progress + PR history
+        # -------- GET: current display values + progress + PR history --------
         progress_rows = build_1rm_progress(s, st)
 
         # latest PRs first (most recent session_date, then newest id)
@@ -419,7 +426,6 @@ def rm_test():
             )
         ).all()
 
-        # convert PRs to display units
         pr_history = []
         for pr in pr_rows:
             if st.units == "lb":
