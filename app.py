@@ -705,12 +705,20 @@ def debug_state():
     ensure_db()
     with Session(engine) as s:
         st = get_or_create_state(s)
+
+        # TEST: force a change into the JSON column
+        rms = st.rms or {}
+        rms["squat"] = 123.0
+        rms["_manual_test"] = (rms.get("_manual_test") or 0) + 1
+        st.rms = rms
+        s.commit()
+
         out = {
             "units": st.units,
             "rms": getattr(st, "rms", None),
         }
         return out, 200
-    
+
 @app.route("/debug-settings")
 @require_login
 def debug_settings():
