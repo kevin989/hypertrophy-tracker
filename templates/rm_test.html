@@ -2,27 +2,33 @@
 {% block content %}
 
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-  <!-- Left: RM form + Epley calculator -->
+
+  <!-- Left Column: RM Form + Epley Calculator -->
   <div class="md:col-span-2">
     <div class="card">
       <h2 class="text-xl font-semibold mb-3">RM Test ({{ units|default('kg') }})</h2>
 
       <form method="post" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        
+        <!-- Bench -->
         <div>
           <label class="block text-sm text-gray-600 mb-1">Bench 1RM ({{ units }})</label>
           <input class="input w-full" type="number" step="0.5" name="bench_rm" placeholder="Enter value">
         </div>
 
+        <!-- Squat -->
         <div>
           <label class="block text-sm text-gray-600 mb-1">Squat 1RM ({{ units }})</label>
           <input class="input w-full" type="number" step="0.5" name="squat_rm" placeholder="Enter value">
         </div>
 
+        <!-- Deadlift -->
         <div>
           <label class="block text-sm text-gray-600 mb-1">Deadlift 1RM ({{ units }})</label>
           <input class="input w-full" type="number" step="0.5" name="deadlift_rm" placeholder="Enter value">
         </div>
 
+        <!-- OHP -->
         <div>
           <label class="block text-sm text-gray-600 mb-1">Overhead Press 1RM ({{ units }})</label>
           <input class="input w-full" type="number" step="0.5" name="ohp_rm" placeholder="Enter value">
@@ -31,41 +37,56 @@
         <div class="md:col-span-2 flex items-center justify-end">
           <button class="btn" type="submit">Save</button>
         </div>
+
       </form>
     </div>
 
-    <!-- Epley 1RM Calculator -->
+    <!-- Epley Calculator -->
     <div class="card mt-4">
       <h3 class="text-lg font-semibold mb-2">Epley 1RM Calculator</h3>
       <p class="text-sm text-slate-600 mb-3">
-        Enter any set (weight &times; reps) to estimate your 1RM using the Epley formula:
-        <code>1RM ≈ weight × (1 + reps / 30)</code>. Result is in {{ units }}.
+        Enter any set (weight × reps) to estimate your 1RM using:
+        <code>1RM = weight × (1 + reps / 30)</code>.
       </p>
+
       <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+        
+        <!-- Weight -->
         <div>
           <label class="block text-sm text-gray-600 mb-1">Weight ({{ units }})</label>
           <input id="epley-weight" class="input w-full" type="number" step="0.5">
         </div>
+
+        <!-- Reps -->
         <div>
           <label class="block text-sm text-gray-600 mb-1">Reps</label>
           <input id="epley-reps" class="input w-full" type="number" step="1" min="1">
         </div>
+
+        <!-- Calculate -->
         <div class="flex items-center">
           <button id="epley-calc-btn" type="button" class="btn w-full">Calculate</button>
         </div>
+
+        <!-- Output -->
         <div>
           <label class="block text-sm text-gray-600 mb-1">Estimated 1RM ({{ units }})</label>
           <input id="epley-output" class="input w-full" type="text" readonly>
         </div>
+
       </div>
+
       <p class="text-xs text-slate-500 mt-2">
-        You can copy the result into the RM fields above if you want to update your baseline without a true 1RM test.
+        Copy the result into the RM fields above to update your training max without a full 1RM test.
       </p>
     </div>
+
   </div>
 
-  <!-- Right: Current 1RMs + Progress table -->
+  <!-- Right Column: Current 1RMs + Est. Progress + PR History -->
   <div>
+
+    <!-- Current 1RMs -->
     <div class="card">
       <h3 class="text-lg font-semibold mb-2">Current 1RMs</h3>
       <table class="table">
@@ -73,106 +94,111 @@
           <tr><th>Lift</th><th>1RM ({{ units }})</th></tr>
         </thead>
         <tbody>
-          <tr><td>Squat</td><td>{{ squat_disp if squat_disp != '' else '—' }}</td></tr>
-          <tr><td>Bench</td><td>{{ bench_disp if bench_disp != '' else '—' }}</td></tr>
-          <tr><td>Deadlift</td><td>{{ deadlift_disp if deadlift_disp != '' else '—' }}</td></tr>
-          <tr><td>Overhead Press</td><td>{{ ohp_disp if ohp_disp != '' else '—' }}</td></tr>
+          <tr><td>Squat</td><td>{{ squat_disp or '—' }}</td></tr>
+          <tr><td>Bench</td><td>{{ bench_disp or '—' }}</td></tr>
+          <tr><td>Deadlift</td><td>{{ deadlift_disp or '—' }}</td></tr>
+          <tr><td>Overhead Press</td><td>{{ ohp_disp or '—' }}</td></tr>
         </tbody>
       </table>
     </div>
 
-      <div class="card mt-4">
-        <h3 class="text-lg font-semibold mb-2">1RM Progress (Epley estimate)</h3>
-        {% if progress and progress|length > 0 %}
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Week</th>
-                <th>Lift</th>
-                <th>Est. 1RM ({{ units }})</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in progress %}
-                <tr>
-                  <td>{{ row.week }}</td>
-                  <td>{{ row.lift }}</td>
-                  <td>{{ row.value }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <p class="text-sm text-slate-600">No 1RM history yet. Log some workouts first!</p>
-        {% endif %}
-      </div>
+    <!-- Estimated 1RM Progress Table -->
+    <div class="card mt-4">
+      <h3 class="text-lg font-semibold mb-2">1RM Progress (Epley Estimated)</h3>
+      {% if progress %}
+      <table class="table">
+        <thead>
+          <tr><th>Week</th><th>Lift</th><th>Est. 1RM ({{ units }})</th></tr>
+        </thead>
+        <tbody>
+          {% for row in progress %}
+            <tr>
+              <td>{{ row.week }}</td>
+              <td>{{ row.lift }}</td>
+              <td>{{ row.value }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="text-sm text-slate-600">No estimated 1RM history yet.</p>
+      {% endif %}
+    </div>
+
+    <!-- PR Table -->
+    <div class="card mt-4">
+      <h3 class="text-lg font-semibold mb-2">PR History</h3>
+      {% if pr_history %}
+      <table class="table">
+        <thead>
+          <tr><th>Date</th><th>Week/Day</th><th>Lift</th><th>New 1RM ({{ units }})</th></tr>
+        </thead>
+        <tbody>
+          {% for pr in pr_history %}
+          <tr>
+            <td>{{ pr.date }}</td>
+            <td>W{{ pr.week }} / D{{ pr.day }}</td>
+            <td>{{ pr.lift }}</td>
+            <td>{{ pr.value }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+        <p class="text-sm text-slate-600">No PRs recorded yet — go lift something heavy 😤</p>
+      {% endif %}
+    </div>
+
   </div>
 </div>
-      <div class="card mt-4">
-        <h3 class="text-lg font-semibold mb-2">PR History</h3>
-        {% if pr_history and pr_history|length > 0 %}
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Week/Day</th>
-                <th>Lift</th>
-                <th>New 1RM ({{ units }})</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for pr in pr_history %}
-                <tr>
-                  <td>{{ pr.date }}</td>
-                  <td>W{{ pr.week }} / D{{ pr.day }}</td>
-                  <td>{{ pr.lift }}</td>
-                  <td>{{ pr.value }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        {% else %}
-          <p class="text-sm text-slate-600">No PRs recorded yet. Hit some heavy sets and they’ll show up here.</p>
-        {% endif %}
-      </div>
 
-      <div class="card mt-4">
-        <h3 class="text-lg font-semibold mb-2">1RM Testing Procedure</h3>
-        <ol class="list-decimal list-inside space-y-1 text-sm text-slate-700">
-          <li>The participant should perform a warm-up with a self-selected load that will allow them to complete a minimum of 6-10 repetitions (approx. 50 % predicted 1RM).</li>
-          <li>1-5 minute rest (decided by test administrator).</li>
-          <li>Participants then select a weight based on the previous effort which allows them to perform three repetitions (approx. 80% of predicted 1RM).</li>
-          <li>1-minute rest (decided by test administrator).</li>
-          <li>Participants now increase the load and begin attempting their 1RM. A series of single attempts should be completed until a 1RM is achieved.</li>
-          <li>Rest periods should remain at 1-5 minutes between each single attempt and load increments typically range between 5-10 % for the upper-body, and 10-20 % for the lower-body exercises. 1RMs should be achieved within 3-7 attempts.</li>
-          <li>If multiple 1RM tests are being administered (e.g. back squat, bench press, and deadlift), then it is recommended that all test exercises should be separated by a 3-5 minute rest period.</li>
-        </ol>
-        <p><b>NOTE:</b> It is essential that the test administrator follows the exact same testing procedure at every successive test throughout the training programme. This ensures that the previous testing data/information can be used and compared against future tests.</p>
-        <p class="text-xs text-slate-500 mt-3">Source: <a href="https://www.scienceforsport.com/1rm-testing/" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline">
-          Science for Sport – 1RM Testing</a>
-        </p>
-      </div>
+
+<!-- 1RM Testing Procedure -->
+<div class="card mt-4">
+  <h3 class="text-lg font-semibold mb-2">1RM Testing Procedure</h3>
+
+  <ol class="list-decimal list-inside space-y-1 text-sm text-slate-700">
+    <li>Warm up with a self-selected load allowing 6–10 reps (~50% predicted 1RM).</li>
+    <li>Rest 1–5 minutes.</li>
+    <li>Select a weight allowing ~3 reps (~80% predicted 1RM).</li>
+    <li>Rest 1 minute.</li>
+    <li>Perform single attempts, increasing load each time until a true 1RM is achieved.</li>
+    <li>Rest 1–5 minutes between attempts; increases of 5–10% (upper body) or 10–20% (lower body).</li>
+    <li>If testing multiple lifts, rest 3–5 minutes between lifts.</li>
+  </ol>
+
+  <p class="text-sm text-slate-700 mt-2">
+    <strong>NOTE:</strong> Always follow the same procedure for consistent testing results.
+  </p>
+
+  <p class="text-xs text-slate-500 mt-3">
+    Source: <a class="text-indigo-600 hover:underline"
+      href="https://www.scienceforsport.com/1rm-testing/"
+      target="_blank">Science for Sport — 1RM Testing</a>
+  </p>
+</div>
+
 
 <script>
-document.addEventListener('DOMContentLoaded', function(){
+document.addEventListener('DOMContentLoaded', () => {
   const btn = document.getElementById('epley-calc-btn');
-  const wInput = document.getElementById('epley-weight');
-  const rInput = document.getElementById('epley-reps');
+  const w = document.getElementById('epley-weight');
+  const r = document.getElementById('epley-reps');
   const out = document.getElementById('epley-output');
 
-  if(btn){
-    btn.addEventListener('click', function(){
-      const w = parseFloat(wInput.value);
-      const r = parseInt(rInput.value, 10);
-      if(!w || w <= 0 || !r || r < 1){
-        out.value = "Enter valid weight & reps";
-        return;
-      }
-      const est = w * (1 + r / 30);
-      out.value = est.toFixed(1);
-    });
-  }
+  btn?.addEventListener('click', () => {
+    const weight = parseFloat(w.value);
+    const reps = parseInt(r.value);
+
+    if (!weight || weight <= 0 || !reps || reps < 1) {
+      out.value = "Enter valid weight + reps";
+      return;
+    }
+
+    out.value = (weight * (1 + reps/30)).toFixed(1);
+  });
 });
 </script>
+
 
 {% endblock %}
