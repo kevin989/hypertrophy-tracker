@@ -63,30 +63,35 @@ def _round_kg_to_2p5(x: float) -> float:
     return round(x / 2.5) * 2.5
 
 def seed_from_rms_for_row(row, st, week: int, rm_map: dict):
-
-    #If this exercise maps to an RM and week is 1 or 2,
-    #seed row.load_last from st.rms[rm_key] * pct (rounded) IF it's empty.
-    #RMs are stored in State.rms as kg.
-
-    # don't overwrite something already logged
-    if row.load_last not in (None, 0) and row.load_last is not None:
+    """
+    If this exercise maps to an RM and week is 1 or 2,
+    seed row.load_last from the State's 1RM fields (bench/squat/deadlift/ohp)
+    using a conservative % of 1RM, rounded to the nearest 2.5 kg.
+    Only runs when load_last is currently empty.
+    """
+    # If user already has a load for this exercise in this week, don't overwrite
+    if row.load_last not in (None, 0):
         return
 
+    # We only auto-seed for the first two weeks
     if week not in (1, 2):
         return
 
+    # rm_map maps exercise name -> one of "bench", "squat", "deadlift", "ohp"
     rm_key = rm_map.get(row.exercise)
     if not rm_key:
-        return  # e.g. accessories
+        # No 1RM mapping for this exercise (e.g. accessory work)
+        return
 
-    rms = st.rms or {}
-    one_rm = rms.get(rm_key)
+    # Pull the 1RM (stored in kg) from the State model
+    one_rm = getattr(st, rm_key, None)
     if not one_rm:
-        return  # user hasn't set this RM yet
+        # User hasn't set this 1RM yet
+        return
 
-    pct = _percent_for_week(week)
+    pct = _percent_for_week(week)          # e.g. 0.55 for week 1, 0.675 for week 2
     load_kg = _round_kg_to_2p5(one_rm * pct)
-    row.load_last = load_kg
+    row.load_last = load_kg                # stored as kg in the DB
 
 # ------------ 1RM estimation (Epley) and updater ------------
 def epley_1rm(weight_kg: float, reps: int) -> float:
